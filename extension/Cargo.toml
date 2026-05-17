@@ -1,0 +1,11 @@
+[package]
+name = "todo-highlighter-extension"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Exact pin — WASM ABI changes in minor bumps can silently break the extension.
+zed_extension_api = "=0.7.0"

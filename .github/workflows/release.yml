@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # All values below are hardcoded — no user-controlled input enters run: steps.
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            use_cross: true
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_suffix: .exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bin_suffix: .exe
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --locked
+
+      - name: Build (cross-compiled)
+        if: matrix.use_cross
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cross build --release -p todo-highlighter-lsp --target "$TARGET"
+
+      - name: Build (native)
+        if: '!matrix.use_cross'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release -p todo-highlighter-lsp --target "$TARGET"
+
+      - name: Package binary and generate SHA-256 checksum
+        env:
+          TARGET: ${{ matrix.target }}
+          BIN_SUFFIX: ${{ matrix.bin_suffix }}
+        shell: bash
+        run: |
+          BIN="todo-highlighter-lsp-${TARGET}${BIN_SUFFIX}"
+          cp "target/${TARGET}/release/todo-highlighter-lsp${BIN_SUFFIX}" "$BIN"
+          # sha256sum on Linux/Windows (Git Bash), shasum on macOS
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "$BIN" | awk '{print $1}' > "${BIN}.sha256"
+          else
+            shasum -a 256 "$BIN" | awk '{print $1}' > "${BIN}.sha256"
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            todo-highlighter-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}
+            todo-highlighter-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          merge-multiple: true
+
+      - name: Publish release with binaries and checksums
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: todo-highlighter-lsp-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
