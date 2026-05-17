@@ -9,3 +9,6 @@ extension/extension.wasm
 *.pdb
 
 .DS_Store
+
+# Local Claude Code permissions (machine-specific)
+.claude/settings.local.json
