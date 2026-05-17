@@ -1,4 +1,11 @@
 /target/
 /extension/target/
 extension/extension.wasm
+
+# rustfmt backup files
+**/*.rs.bk
+
+# Windows MSVC debug symbols
+*.pdb
+
 .DS_Store
