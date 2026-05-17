@@ -4,12 +4,12 @@ use keywords::{build_keywords, Keyword};
 use lsp_server::{Connection, Message, Response};
 use lsp_types::{
     notification::{
-        DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument,
+        DidChangeTextDocument, DidCloseTextDocument,
         DidOpenTextDocument, Notification,
     },
     request::{Request as LspRequest, SemanticTokensFullRequest, SemanticTokensRangeRequest},
     MessageType, Range, SemanticToken, SemanticTokens,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensFullOptions, SemanticTokensOptions,
     SemanticTokensRangeResult, SemanticTokensResult, SemanticTokensServerCapabilities,
     ServerCapabilities, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
     WorkDoneProgressOptions,
@@ -152,11 +152,7 @@ struct Document {
 }
 
 struct Server {
-    base_keywords: Vec<Keyword>,
-    /// Active keyword set: base + any extras from workspace config.
     keywords: Vec<Keyword>,
-    /// Token type index used for user-added extra keywords.
-    custom_token_type_index: u32,
     documents: HashMap<Url, Document>,
     // Setup-hint tracking — detect when semantic tokens are not enabled in Zed.
     documents_opened: usize,
@@ -170,16 +166,9 @@ struct Server {
 }
 
 impl Server {
-    fn new(base_keywords: Vec<Keyword>, legend: &SemanticTokensLegend) -> Self {
-        let custom_token_type_index = legend
-            .token_types
-            .iter()
-            .position(|t| t.as_str() == "xxxKeyword")
-            .unwrap_or(8) as u32;
+    fn new(keywords: Vec<Keyword>) -> Self {
         Self {
-            keywords: base_keywords.clone(),
-            base_keywords,
-            custom_token_type_index,
+            keywords,
             documents: HashMap::new(),
             documents_opened: 0,
             hint_eligible: false,
@@ -249,68 +238,13 @@ impl Server {
         }).unwrap_or_default();
         SemanticTokens { result_id: None, data }
     }
-
-    /// Applies workspace configuration sent via `workspace/didChangeConfiguration`.
-    ///
-    /// Expected settings shape:
-    /// ```json
-    /// { "extraKeywords": ["IDEA", "QUESTION", "REVIEW"] }
-    /// ```
-    /// Extra keywords use the `xxxKeyword` token type (purple) by default.
-    fn apply_config(&mut self, settings: &serde_json::Value) {
-        let extras: Vec<String> = settings
-            .get("extraKeywords")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(|s| s.trim().to_uppercase())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let custom_index = self.custom_token_type_index;
-        let custom: Vec<Keyword> = extras
-            .iter()
-            .filter_map(|word| {
-                regex::Regex::new(&format!(r"\b{}\b", regex::escape(word)))
-                    .ok()
-                    .map(|pattern| Keyword { pattern, token_type_index: custom_index })
-            })
-            .collect();
-
-        self.keywords = self.base_keywords.iter().cloned().chain(custom).collect();
-
-        // Keyword set changed — invalidate all cached hits.
-        for doc in self.documents.values_mut() {
-            doc.cached_hits = None;
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
 // Server run loop
 // ---------------------------------------------------------------------------
 
-
-/// Pulls configuration from the client and then processes all incoming
-/// messages until the connection closes or a shutdown request is received.
 fn run(connection: Connection, mut server: Server) {
-    // Zed delivers `lsp.<server>.settings` in response to workspace/configuration
-    // requests; it does NOT send them via initializationOptions on startup.
-    const CONFIG_REQ_ID: i32 = 1;
-    // Sent after apply_config to ask Zed to re-request tokens for all open documents.
-    const REFRESH_REQ_ID: i32 = 2;
-    connection
-        .sender
-        .send(Message::Request(lsp_server::Request {
-            id: lsp_server::RequestId::from(CONFIG_REQ_ID),
-            method: "workspace/configuration".to_string(),
-            params: serde_json::json!({ "items": [{ "section": "todo-highlighter-lsp" }] }),
-        }))
-        .unwrap();
-
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
@@ -411,8 +345,8 @@ fn run(connection: Connection, mut server: Server) {
                         Err(e) => eprintln!("todo-highlighter-lsp: bad didChange params: {e}"),
                     }
                     if let Some(hint) = server.take_hint_if_needed() {
-                    let _ = connection.sender.send(hint);
-                }
+                        let _ = connection.sender.send(hint);
+                    }
                 }
 
                 DidCloseTextDocument::METHOD => {
@@ -425,55 +359,14 @@ fn run(connection: Connection, mut server: Server) {
                         Err(e) => eprintln!("todo-highlighter-lsp: bad didClose params: {e}"),
                     }
                     if let Some(hint) = server.take_hint_if_needed() {
-                    let _ = connection.sender.send(hint);
-                }
-                }
-
-                DidChangeConfiguration::METHOD => {
-                    // Zed sends this as a hint that settings changed; re-pull the actual values.
-                    let _ = connection.sender.send(Message::Request(lsp_server::Request {
-                        id: lsp_server::RequestId::from(CONFIG_REQ_ID),
-                        method: "workspace/configuration".to_string(),
-                        params: serde_json::json!({
-                            "items": [{ "section": "todo-highlighter-lsp" }]
-                        }),
-                    }));
-                    if let Some(hint) = server.take_hint_if_needed() {
-                    let _ = connection.sender.send(hint);
-                }
+                        let _ = connection.sender.send(hint);
+                    }
                 }
 
                 _ => {}
             },
 
-            Message::Response(resp) => {
-                if resp.id == lsp_server::RequestId::from(CONFIG_REQ_ID) {
-                    if let Some(result) = resp.result {
-                        // workspace/configuration returns an array (one entry per item).
-                        if let Ok(mut configs) =
-                            serde_json::from_value::<Vec<serde_json::Value>>(result)
-                        {
-                            if let Some(settings) = configs.drain(..).next() {
-                                server.apply_config(&settings);
-                                // Tell Zed to re-request tokens for all open documents so
-                                // that extra keywords take effect immediately without
-                                // requiring the user to edit or reopen each file.
-                                let _ =
-                                    connection.sender.send(Message::Request(lsp_server::Request {
-                                        id: lsp_server::RequestId::from(REFRESH_REQ_ID),
-                                        method: "workspace/semanticTokens/refresh".to_string(),
-                                        params: serde_json::Value::Null,
-                                    }));
-                            }
-                        }
-                    }
-                }
-                // Responses to other server-initiated requests (e.g. REFRESH_REQ_ID) are
-                // intentionally ignored — we fire-and-forget those requests.
-                if let Some(hint) = server.take_hint_if_needed() {
-                    let _ = connection.sender.send(hint);
-                }
-            }
+            Message::Response(_) => {}
         }
     }
 }
@@ -483,8 +376,8 @@ fn run(connection: Connection, mut server: Server) {
 // ---------------------------------------------------------------------------
 
 fn main() {
-    let (base_keywords, legend) = build_keywords();
-    let server = Server::new(base_keywords, &legend);
+    let (keywords, legend) = build_keywords();
+    let server = Server::new(keywords);
 
     let (connection, io_threads) = Connection::stdio();
 
@@ -528,8 +421,8 @@ mod tests {
     }
 
     fn make_server() -> Server {
-        let (kws, legend) = build_keywords();
-        Server::new(kws, &legend)
+        let (kws, _) = build_keywords();
+        Server::new(kws)
     }
 
     fn make_range(start_line: u32, start_col: u32, end_line: u32, end_col: u32) -> Range {
@@ -708,43 +601,6 @@ mod tests {
         assert!(tokens.data.is_empty());
     }
 
-    // --- configurable keywords ----------------------------------------------
-
-    #[test]
-    fn extra_keywords_are_recognized() {
-        let mut server = make_server();
-        server.apply_config(&serde_json::json!({ "extraKeywords": ["IDEA", "QUESTION"] }));
-        let tokens = scan_tokens("IDEA: implement this\nQUESTION: is this right?", &server.keywords);
-        assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].token_type, 8);
-        assert_eq!(tokens[1].token_type, 8);
-    }
-
-    #[test]
-    fn extra_keywords_are_case_normalised() {
-        let mut server = make_server();
-        server.apply_config(&serde_json::json!({ "extraKeywords": ["idea"] }));
-        let tokens = scan_tokens("IDEA: implement this", &server.keywords);
-        assert_eq!(tokens.len(), 1);
-    }
-
-    #[test]
-    fn extra_keywords_cleared_on_empty_config() {
-        let mut server = make_server();
-        server.apply_config(&serde_json::json!({ "extraKeywords": ["IDEA"] }));
-        server.apply_config(&serde_json::json!({}));
-        assert_eq!(scan_tokens("IDEA: implement this", &server.keywords).len(), 0);
-    }
-
-    #[test]
-    fn base_keywords_still_work_after_config_change() {
-        let mut server = make_server();
-        server.apply_config(&serde_json::json!({ "extraKeywords": ["IDEA"] }));
-        let tokens = scan_tokens("TODO: still works", &server.keywords);
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].token_type, 0);
-    }
-
     // --- should_send_setup_hint ---------------------------------------------
 
     #[test]
@@ -820,21 +676,6 @@ mod tests {
         assert!(server.tokens_for_range(&uri, &make_range(0, 0, 1, 0)).data.is_empty());
     }
 
-    // --- apply_config cache invalidation ------------------------------------
-
-    #[test]
-    fn apply_config_invalidates_cached_hits() {
-        let mut server = make_server();
-        let uri: Url = "file:///tmp/cache_inv.rs".parse().unwrap();
-        server.documents.insert(uri.clone(), Document {
-            text: "IDEA: test".to_string(),
-            version: 1,
-            cached_hits: Some(vec![]),
-        });
-        server.apply_config(&serde_json::json!({ "extraKeywords": ["IDEA"] }));
-        assert!(server.documents[&uri].cached_hits.is_none());
-    }
-
     // --- lsp_pos_to_byte multi-line path ------------------------------------
 
     #[test]
@@ -880,27 +721,12 @@ mod tests {
         serde_json::to_value(msg).unwrap()
     }
 
-    /// Consumes the `workspace/semanticTokens/refresh` request the server sends
-    /// after every `apply_config` call, and asserts its method is correct.
-    fn recv_refresh(conn: &Connection) {
-        let msg = recv(conn);
-        assert_eq!(msg["method"], "workspace/semanticTokens/refresh");
-    }
-
     #[test]
     fn run_responds_to_semantic_tokens_full() {
         let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
+        let (kws, _) = build_keywords();
+        let server = Server::new(kws);
         let handle = std::thread::spawn(move || run(server_conn, server));
-
-        // Respond to workspace/configuration pull.
-        let config_req = recv(&client_conn);
-        assert_eq!(config_req["method"], "workspace/configuration");
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"], "result": [{}]
-        }));
-        recv_refresh(&client_conn);
 
         send(&client_conn, serde_json::json!({
             "jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -933,15 +759,9 @@ mod tests {
     #[test]
     fn run_responds_to_semantic_tokens_range() {
         let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
+        let (kws, _) = build_keywords();
+        let server = Server::new(kws);
         let handle = std::thread::spawn(move || run(server_conn, server));
-
-        let config_req = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"], "result": [{}]
-        }));
-        recv_refresh(&client_conn);
 
         send(&client_conn, serde_json::json!({
             "jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -975,58 +795,11 @@ mod tests {
     }
 
     #[test]
-    fn run_applies_extra_keywords_from_config_response() {
-        let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
-        let handle = std::thread::spawn(move || run(server_conn, server));
-
-        let config_req = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"],
-            "result": [{ "extraKeywords": ["IDEA"] }]
-        }));
-        recv_refresh(&client_conn);
-
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "textDocument/didOpen",
-            "params": { "textDocument": {
-                "uri": "file:///tmp/extra_kw.rs", "languageId": "rust",
-                "version": 1, "text": "IDEA: something"
-            }}
-        }));
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": 12, "method": "textDocument/semanticTokens/full",
-            "params": { "textDocument": { "uri": "file:///tmp/extra_kw.rs" } }
-        }));
-
-        let resp = recv(&client_conn);
-        assert_eq!(resp["id"], 12);
-        let data = resp["result"]["data"].as_array().unwrap();
-        assert_eq!(data.len(), 5, "IDEA should be highlighted as an extra keyword");
-
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": null
-        }));
-        recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "exit", "params": null
-        }));
-        handle.join().unwrap();
-    }
-
-    #[test]
     fn run_did_change_updates_tokens() {
         let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
+        let (kws, _) = build_keywords();
+        let server = Server::new(kws);
         let handle = std::thread::spawn(move || run(server_conn, server));
-
-        let config_req = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"], "result": [{}]
-        }));
-        recv_refresh(&client_conn);
 
         send(&client_conn, serde_json::json!({
             "jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -1066,15 +839,9 @@ mod tests {
     #[test]
     fn run_did_close_removes_document() {
         let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
+        let (kws, _) = build_keywords();
+        let server = Server::new(kws);
         let handle = std::thread::spawn(move || run(server_conn, server));
-
-        let config_req = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"], "result": [{}]
-        }));
-        recv_refresh(&client_conn);
 
         send(&client_conn, serde_json::json!({
             "jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -1111,15 +878,9 @@ mod tests {
     #[test]
     fn run_setup_hint_sent_after_two_opens_without_token_request() {
         let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
+        let (kws, _) = build_keywords();
+        let server = Server::new(kws);
         let handle = std::thread::spawn(move || run(server_conn, server));
-
-        let config_req = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"], "result": [{}]
-        }));
-        recv_refresh(&client_conn);
 
         for i in 0..2u32 {
             send(&client_conn, serde_json::json!({
@@ -1150,139 +911,6 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("TODO Highlighter"));
-
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": null
-        }));
-        recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "exit", "params": null
-        }));
-        handle.join().unwrap();
-    }
-
-    #[test]
-    fn run_did_change_configuration_re_pulls_config() {
-        let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
-        let handle = std::thread::spawn(move || run(server_conn, server));
-
-        // Initial config pull — no extra keywords.
-        let config_req = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"], "result": [{}]
-        }));
-        recv_refresh(&client_conn);
-
-        // Trigger a settings change; server should re-pull.
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "workspace/didChangeConfiguration",
-            "params": { "settings": null }
-        }));
-
-        let config_req2 = recv(&client_conn);
-        assert_eq!(config_req2["method"], "workspace/configuration");
-        // Respond with IDEA as a new extra keyword.
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req2["id"],
-            "result": [{ "extraKeywords": ["IDEA"] }]
-        }));
-        recv_refresh(&client_conn);
-
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "textDocument/didOpen",
-            "params": { "textDocument": {
-                "uri": "file:///tmp/recfg.rs", "languageId": "rust",
-                "version": 1, "text": "IDEA: test"
-            }}
-        }));
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": 15, "method": "textDocument/semanticTokens/full",
-            "params": { "textDocument": { "uri": "file:///tmp/recfg.rs" } }
-        }));
-
-        let resp = recv(&client_conn);
-        assert_eq!(resp["id"], 15);
-        let data = resp["result"]["data"].as_array().unwrap();
-        assert_eq!(data.len(), 5, "IDEA should be highlighted after config re-pull");
-
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": null
-        }));
-        recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "exit", "params": null
-        }));
-        handle.join().unwrap();
-    }
-
-    /// Regression test for the race condition where a document is already open and
-    /// has tokens cached (with only base keywords) before the config response arrives.
-    /// After apply_config the server must send `workspace/semanticTokens/refresh` so
-    /// that the editor re-requests tokens and picks up the new extra keywords.
-    #[test]
-    fn run_extra_keywords_refresh_already_open_document() {
-        let (server_conn, client_conn) = make_in_process_connection();
-        let (kws, legend) = build_keywords();
-        let server = Server::new(kws, &legend);
-        let handle = std::thread::spawn(move || run(server_conn, server));
-
-        // Initial config pull — no extra keywords yet.
-        let config_req = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req["id"], "result": [{}]
-        }));
-        recv_refresh(&client_conn);
-
-        // Open a document and request tokens — cached with base keywords only.
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "textDocument/didOpen",
-            "params": { "textDocument": {
-                "uri": "file:///tmp/refresh_open.rs", "languageId": "rust",
-                "version": 1, "text": "IDEA: check this out"
-            }}
-        }));
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": 20, "method": "textDocument/semanticTokens/full",
-            "params": { "textDocument": { "uri": "file:///tmp/refresh_open.rs" } }
-        }));
-        let resp = recv(&client_conn);
-        assert_eq!(resp["id"], 20);
-        assert!(
-            resp["result"]["data"].as_array().unwrap().is_empty(),
-            "IDEA must not be highlighted before extraKeywords is configured"
-        );
-
-        // User adds IDEA to extraKeywords in settings.
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "method": "workspace/didChangeConfiguration",
-            "params": { "settings": null }
-        }));
-        let config_req2 = recv(&client_conn);
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": config_req2["id"],
-            "result": [{ "extraKeywords": ["IDEA"] }]
-        }));
-
-        // Server must send refresh so the editor re-requests tokens for open documents.
-        let refresh = recv(&client_conn);
-        assert_eq!(
-            refresh["method"], "workspace/semanticTokens/refresh",
-            "server must send semanticTokens/refresh after applying config"
-        );
-
-        // Re-request tokens — cache was invalidated; fresh scan picks up IDEA.
-        send(&client_conn, serde_json::json!({
-            "jsonrpc": "2.0", "id": 21, "method": "textDocument/semanticTokens/full",
-            "params": { "textDocument": { "uri": "file:///tmp/refresh_open.rs" } }
-        }));
-        let resp2 = recv(&client_conn);
-        assert_eq!(resp2["id"], 21);
-        assert_eq!(
-            resp2["result"]["data"].as_array().unwrap().len(), 5,
-            "IDEA must be highlighted after extraKeywords config update"
-        );
 
         send(&client_conn, serde_json::json!({
             "jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": null

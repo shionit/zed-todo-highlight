@@ -96,28 +96,6 @@ Each rule accepts an optional `background_color` field. The palette in the insta
 
 Omit `background_color` from any rule to leave the editor's default background unchanged for that keyword.
 
-## Adding Extra Keywords
-
-Add custom keywords — they appear in purple by default:
-
-```json
-{
-  "lsp": {
-    "todo-highlighter-lsp": {
-      "settings": {
-        "extraKeywords": ["IDEA", "QUESTION", "REVIEW"]
-      }
-    }
-  }
-}
-```
-
-Override the color for extra keywords by adding a rule for `xxxKeyword`:
-
-```json
-{ "token_type": "xxxKeyword", "foreground_color": "#30D158", "font_weight": "bold" }
-```
-
 ## Troubleshooting
 
 **Keywords are not highlighted after installation**

@@ -97,26 +97,6 @@ fn semantic_tokens_full_round_trip() {
         }),
     );
 
-    // ── workspace/configuration (server-initiated) ───────────────────────────
-    // After initialization, the server immediately pulls its configuration.
-    // Act as a client: read the request and respond with an empty config.
-    let config_req = lsp_recv(&mut stdout);
-    assert_eq!(
-        config_req["method"], "workspace/configuration",
-        "expected workspace/configuration request from server"
-    );
-    lsp_send(
-        &mut stdin,
-        &serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": config_req["id"],
-            "result": [{}]
-        }),
-    );
-    // Server sends workspace/semanticTokens/refresh after applying config.
-    let refresh = lsp_recv(&mut stdout);
-    assert_eq!(refresh["method"], "workspace/semanticTokens/refresh");
-
     // ── textDocument/didOpen ─────────────────────────────────────────────────
     lsp_send(
         &mut stdin,
@@ -198,15 +178,6 @@ fn unknown_method_returns_method_not_found() {
         &mut stdin,
         &serde_json::json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }),
     );
-
-    // Consume workspace/configuration request from server and respond.
-    let config_req = lsp_recv(&mut stdout);
-    lsp_send(
-        &mut stdin,
-        &serde_json::json!({ "jsonrpc": "2.0", "id": config_req["id"], "result": [{}] }),
-    );
-    // Consume workspace/semanticTokens/refresh sent after apply_config.
-    lsp_recv(&mut stdout);
 
     lsp_send(
         &mut stdin,
