@@ -15,8 +15,7 @@
     },
     {
       "matchUpdateTypes": ["major"],
-      "matchPackageNames": ["*"],
-      "assignees": ["shionit"]
+      "matchPackageNames": ["*"]
     }
   ]
 }
