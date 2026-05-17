@@ -4,7 +4,7 @@
 
 The extension is **working end-to-end** — installed as a dev extension in Zed with keywords highlighting correctly in the editor:
 - WASM extension (`extension/src/lib.rs`) — registers LSP server, downloads pre-built binaries for macOS, Linux, and Windows
-- LSP server (`lsp/src/main.rs`) — scans buffers, emits semantic tokens, user-configurable extra keywords, setup notification
+- LSP server (`lsp/src/main.rs`) — scans buffers, emits semantic tokens, setup notification
 - 22 tests (20 unit + 2 integration, full LSP protocol round-trip)
 - CI workflow (test + clippy + WASM check) and release workflow (6-platform binary build + GitHub Release)
 - `extension/extension.toml` co-located with the extension crate — Zed requires the manifest next to the `[package]` Cargo.toml
@@ -46,7 +46,7 @@ The extension is **working end-to-end** — installed as a dev extension in Zed 
   - `unknown_method_returns_method_not_found`: asserts error code `-32601` for unknown requests
   - `ChildGuard` RAII struct kills and reaps the process on drop — no zombie leaks on test failure
 
-- [x] **User-configurable keywords via LSP workspace config**
+- [ ] **User-configurable keywords via LSP workspace config** *(postponed — not yet working correctly)*
   - Handles `workspace/didChangeConfiguration` notification
   - Users add extra keywords in Zed settings: `{ "extraKeywords": ["IDEA", "QUESTION"] }`
   - Extra keywords normalise to uppercase and reuse the `xxxKeyword` token type (purple)
@@ -86,7 +86,7 @@ The extension is **working end-to-end** — installed as a dev extension in Zed 
 
 - [x] **README improvements**
   - Single copy-paste settings block covering both required settings (`semantic_tokens` + `semantic_token_rules`)
-  - Added **Adding Extra Keywords** section with `extraKeywords` config example
+  - Added **Adding Extra Keywords** section with `extraKeywords` config example *(postponed — not yet working correctly)*
   - Added **Troubleshooting** section covering: tokens not appearing, partial matches, color conflicts
   - Added Windows dev install instructions alongside macOS/Linux
   - Added callout explaining why both settings are needed (Zed architectural limitation)
@@ -119,4 +119,3 @@ The extension is **working end-to-end** — installed as a dev extension in Zed 
 | Range tokens must be sorted and non-overlapping | **Resolved** — `scan_tokens_in_range` filters + re-encodes |
 | Binary download integrity | **Mitigated** — HTTPS transport + CI generates `.sha256` assets on release |
 | Dev extension install fails | **Resolved** — two root causes fixed: (1) add `~/.cargo/bin` to `/etc/paths.d/rust` so Zed finds `rustc`; (2) select `extension/` subdirectory (not repo root) since Zed rejects workspace `Cargo.toml` |
-| Keywords not highlighted after install | **Resolved** — `"semantic_tokens": "combined"` and `global_lsp_settings.semantic_token_rules` must be set in `~/.config/zed/settings.json`; Zed does not render LSP semantic tokens without this |
