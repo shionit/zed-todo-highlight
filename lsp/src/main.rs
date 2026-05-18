@@ -245,6 +245,16 @@ impl Server {
 // ---------------------------------------------------------------------------
 
 fn run(connection: Connection, mut server: Server) {
+    // Zed does not automatically re-request semantic tokens for documents that
+    // were already open when the LSP server starts.  Sending a refresh here
+    // tells Zed to request tokens for every open document immediately.
+    const REFRESH_REQ_ID: i32 = 1;
+    let _ = connection.sender.send(Message::Request(lsp_server::Request {
+        id: lsp_server::RequestId::from(REFRESH_REQ_ID),
+        method: "workspace/semanticTokens/refresh".to_string(),
+        params: serde_json::Value::Null,
+    }));
+
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
@@ -366,7 +376,12 @@ fn run(connection: Connection, mut server: Server) {
                 _ => {}
             },
 
-            Message::Response(_) => {}
+            Message::Response(_) => {
+                // Response to workspace/semanticTokens/refresh — fire-and-forget.
+                if let Some(hint) = server.take_hint_if_needed() {
+                    let _ = connection.sender.send(hint);
+                }
+            }
         }
     }
 }
@@ -740,6 +755,10 @@ mod tests {
             "params": { "textDocument": { "uri": "file:///tmp/run_test.rs" } }
         }));
 
+        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
+        let startup = recv(&client_conn);
+        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
+
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 10);
         let data = resp["result"]["data"].as_array().unwrap();
@@ -778,6 +797,10 @@ mod tests {
                            "end":   { "line": 1, "character": 0 } }
             }
         }));
+
+        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
+        let startup = recv(&client_conn);
+        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
 
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 11);
@@ -821,6 +844,10 @@ mod tests {
             "params": { "textDocument": { "uri": "file:///tmp/change.rs" } }
         }));
 
+        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
+        let startup = recv(&client_conn);
+        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
+
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 13);
         let data = resp["result"]["data"].as_array().unwrap();
@@ -859,6 +886,10 @@ mod tests {
             "jsonrpc": "2.0", "id": 14, "method": "textDocument/semanticTokens/full",
             "params": { "textDocument": { "uri": "file:///tmp/close_me.rs" } }
         }));
+
+        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
+        let startup = recv(&client_conn);
+        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
 
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 14);
@@ -903,6 +934,10 @@ mod tests {
                 "contentChanges": [{ "text": "still no keywords" }]
             }
         }));
+
+        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
+        let startup = recv(&client_conn);
+        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
 
         // The server should emit a window/showMessage hint.
         let notif = recv(&client_conn);
