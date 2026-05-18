@@ -96,6 +96,9 @@ fn semantic_tokens_full_round_trip() {
             "params": {}
         }),
     );
+    // Server sends workspace/semanticTokens/refresh at startup — consume it.
+    let refresh = lsp_recv(&mut stdout);
+    assert_eq!(refresh["method"], "workspace/semanticTokens/refresh");
 
     // ── textDocument/didOpen ─────────────────────────────────────────────────
     lsp_send(
@@ -178,6 +181,8 @@ fn unknown_method_returns_method_not_found() {
         &mut stdin,
         &serde_json::json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }),
     );
+    // Server sends workspace/semanticTokens/refresh at startup — consume it.
+    lsp_recv(&mut stdout);
 
     lsp_send(
         &mut stdin,
