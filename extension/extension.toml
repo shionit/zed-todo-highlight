@@ -4,7 +4,7 @@ version = "0.1.0"
 schema_version = 1
 authors = ["Shion Ito <frontier.engine+github@gmail.com>"]
 description = "Highlights TODO, FIXME, HACK, NOTE, WARN, BUG and other keywords across all file types"
-repository = "https://github.com/shionit/todo-highlighter"
+repository = "https://github.com/shionit/zed-todo-highlighter"
 
 [language_servers.todo-highlighter-lsp]
 name = "TODO Highlighter LSP"
