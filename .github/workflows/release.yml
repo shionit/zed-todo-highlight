@@ -54,12 +54,14 @@ jobs:
         if: matrix.use_cross
         env:
           TARGET: ${{ matrix.target }}
+        shell: bash
         run: cross build --release -p todo-highlighter-lsp --target "$TARGET"
 
       - name: Build (native)
         if: '!matrix.use_cross'
         env:
           TARGET: ${{ matrix.target }}
+        shell: bash
         run: cargo build --release -p todo-highlighter-lsp --target "$TARGET"
 
       - name: Package binary and generate SHA-256 checksum
