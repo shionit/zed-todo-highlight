@@ -93,7 +93,7 @@ impl TodoHighlighterExtension {
 
         if !std::path::Path::new(&binary_path).exists() {
             let url = format!(
-                "https://github.com/shionit/todo-highlighter/releases/download/v{LSP_VERSION}/{binary_name}"
+                "https://github.com/shionit/zed-todo-highlighter/releases/download/v{LSP_VERSION}/{binary_name}"
             );
             zed::download_file(&url, &binary_path, DownloadedFileType::Uncompressed)
                 .map_err(|e| format!("Failed to download {binary_name} v{LSP_VERSION}: {e}"))?;
