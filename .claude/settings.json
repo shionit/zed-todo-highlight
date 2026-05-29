@@ -8,7 +8,7 @@
       },
       {
         "matcher": "Write|Edit",
-        "command": "case \"$FILE_PATH\" in */lsp/src/*.rs) ~/.cargo/bin/cargo clippy -p todo-highlighter-lsp -- -D warnings 2>&1 | head -40 ;; esac",
+        "command": "case \"$FILE_PATH\" in */lsp/src/*.rs) ~/.cargo/bin/cargo clippy -p todo-highlight-lsp -- -D warnings 2>&1 | head -40 ;; esac",
         "description": "Run clippy on LSP crate after edits to lsp/src/"
       }
     ]
