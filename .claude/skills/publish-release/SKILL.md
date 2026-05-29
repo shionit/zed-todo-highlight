@@ -1,6 +1,6 @@
 ---
 name: publish-release
-description: Publish a new versioned release of todo-highlighter to GitHub Releases
+description: Publish a new versioned release of todo-highlight to GitHub Releases
 ---
 
 Publish version: $ARGUMENTS
@@ -50,24 +50,24 @@ Run each cross-compilation. Requires the targets to be installed via `rustup tar
 CARGO=~/.cargo/bin/cargo
 
 # macOS Apple Silicon
-$CARGO build --release -p todo-highlighter-lsp --target aarch64-apple-darwin
+$CARGO build --release -p todo-highlight-lsp --target aarch64-apple-darwin
 
 # macOS Intel
-$CARGO build --release -p todo-highlighter-lsp --target x86_64-apple-darwin
+$CARGO build --release -p todo-highlight-lsp --target x86_64-apple-darwin
 
 # Linux ARM64
-$CARGO build --release -p todo-highlighter-lsp --target aarch64-unknown-linux-gnu
+$CARGO build --release -p todo-highlight-lsp --target aarch64-unknown-linux-gnu
 
 # Linux x86_64
-$CARGO build --release -p todo-highlighter-lsp --target x86_64-unknown-linux-gnu
+$CARGO build --release -p todo-highlight-lsp --target x86_64-unknown-linux-gnu
 ```
 
 Copy and rename binaries to match the names the extension downloads:
 ```bash
-cp target/aarch64-apple-darwin/release/todo-highlighter-lsp   dist/todo-highlighter-lsp-aarch64-apple-darwin
-cp target/x86_64-apple-darwin/release/todo-highlighter-lsp    dist/todo-highlighter-lsp-x86_64-apple-darwin
-cp target/aarch64-unknown-linux-gnu/release/todo-highlighter-lsp  dist/todo-highlighter-lsp-aarch64-unknown-linux-gnu
-cp target/x86_64-unknown-linux-gnu/release/todo-highlighter-lsp   dist/todo-highlighter-lsp-x86_64-unknown-linux-gnu
+cp target/aarch64-apple-darwin/release/todo-highlight-lsp   dist/todo-highlight-lsp-aarch64-apple-darwin
+cp target/x86_64-apple-darwin/release/todo-highlight-lsp    dist/todo-highlight-lsp-x86_64-apple-darwin
+cp target/aarch64-unknown-linux-gnu/release/todo-highlight-lsp  dist/todo-highlight-lsp-aarch64-unknown-linux-gnu
+cp target/x86_64-unknown-linux-gnu/release/todo-highlight-lsp   dist/todo-highlight-lsp-x86_64-unknown-linux-gnu
 ```
 
 ## Step 6 — Create GitHub Release and upload assets
@@ -76,10 +76,10 @@ cp target/x86_64-unknown-linux-gnu/release/todo-highlighter-lsp   dist/todo-high
 gh release create vx.y.z \
   --title "v x.y.z" \
   --notes "Release notes here" \
-  dist/todo-highlighter-lsp-aarch64-apple-darwin \
-  dist/todo-highlighter-lsp-x86_64-apple-darwin \
-  dist/todo-highlighter-lsp-aarch64-unknown-linux-gnu \
-  dist/todo-highlighter-lsp-x86_64-unknown-linux-gnu
+  dist/todo-highlight-lsp-aarch64-apple-darwin \
+  dist/todo-highlight-lsp-x86_64-apple-darwin \
+  dist/todo-highlight-lsp-aarch64-unknown-linux-gnu \
+  dist/todo-highlight-lsp-x86_64-unknown-linux-gnu
 ```
 
 ## Step 7 — Verify the download works
@@ -88,5 +88,5 @@ Install the released version as a dev extension in Zed and confirm the LSP start
 
 Expected URL pattern:
 ```
-https://github.com/shionit/todo-highlighter/releases/download/vx.y.z/todo-highlighter-lsp-{target}
+https://github.com/shionit/zed-todo-highlight/releases/download/vx.y.z/todo-highlight-lsp-{target}
 ```

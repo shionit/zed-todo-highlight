@@ -26,7 +26,7 @@ jobs:
         run: cargo test --workspace
 
       - name: Clippy
-        run: cargo clippy -p todo-highlighter-lsp -- -D warnings
+        run: cargo clippy -p todo-highlight-lsp -- -D warnings
 
       - name: Check extension (wasm32-wasip1)
-        run: cargo check -p todo-highlighter-extension --target wasm32-wasip1
+        run: cargo check -p todo-highlight-extension --target wasm32-wasip1

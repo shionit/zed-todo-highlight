@@ -1,6 +1,6 @@
 ---
 name: add-keyword
-description: Add a new highlight keyword to todo-highlighter end-to-end
+description: Add a new highlight keyword to todo-highlight end-to-end
 ---
 
 Add the keyword: $ARGUMENTS

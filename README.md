@@ -1,8 +1,8 @@
-# TODO Highlighter for Zed
+# TODO Highlight for Zed
 
 Highlights `TODO`, `FIXME`, `HACK`, `NOTE`, `WARN`, `BUG` and other keywords across all file types in Zed.
 
-![TODO Highlighter in action](docs/screenshot.png)
+![TODO Highlight in action](docs/screenshot.png)
 
 Inspired by the VS Code [TODO Highlight](https://marketplace.visualstudio.com/items?itemName=wayou.vscode-todo-highlight) extension.
 
@@ -31,14 +31,14 @@ Install from the Zed extension registry, or as a dev extension:
 
    **macOS / Linux**
    ```sh
-   cargo build --release -p todo-highlighter-lsp
-   cp target/release/todo-highlighter-lsp ~/.local/bin/
+   cargo build --release -p todo-highlight-lsp
+   cp target/release/todo-highlight-lsp ~/.local/bin/
    ```
 
    **Windows**
    ```powershell
-   cargo build --release -p todo-highlighter-lsp
-   copy target\release\todo-highlighter-lsp.exe "$env:USERPROFILE\.local\bin\"
+   cargo build --release -p todo-highlight-lsp
+   copy target\release\todo-highlight-lsp.exe "$env:USERPROFILE\.local\bin\"
    ```
    (Create `%USERPROFILE%\.local\bin` and add it to your `PATH` if it doesn't exist.)
 
@@ -101,7 +101,7 @@ Omit `background_color` from any rule to leave the editor's default background u
 **Keywords are not highlighted after installation**
 
 1. Confirm both `semantic_tokens` and `semantic_token_rules` are in your `settings.json` (see Installation step 2 above).
-2. Confirm the LSP server is running: Zed → `View` → `Toggle Log` → search for `todo-highlighter-lsp`.
+2. Confirm the LSP server is running: Zed → `View` → `Toggle Log` → search for `todo-highlight-lsp`.
 3. If the log shows "binary not found", the LSP binary is not on your PATH — see step 1 of the installation.
 
 > If you installed the extension without configuring settings yet, the extension will show a notification after you open two files guiding you to the required settings.

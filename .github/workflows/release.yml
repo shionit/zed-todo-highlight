@@ -55,14 +55,14 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         shell: bash
-        run: cross build --release -p todo-highlighter-lsp --target "$TARGET"
+        run: cross build --release -p todo-highlight-lsp --target "$TARGET"
 
       - name: Build (native)
         if: '!matrix.use_cross'
         env:
           TARGET: ${{ matrix.target }}
         shell: bash
-        run: cargo build --release -p todo-highlighter-lsp --target "$TARGET"
+        run: cargo build --release -p todo-highlight-lsp --target "$TARGET"
 
       - name: Package binary and generate SHA-256 checksum
         env:
@@ -70,8 +70,8 @@ jobs:
           BIN_SUFFIX: ${{ matrix.bin_suffix }}
         shell: bash
         run: |
-          BIN="todo-highlighter-lsp-${TARGET}${BIN_SUFFIX}"
-          cp "target/${TARGET}/release/todo-highlighter-lsp${BIN_SUFFIX}" "$BIN"
+          BIN="todo-highlight-lsp-${TARGET}${BIN_SUFFIX}"
+          cp "target/${TARGET}/release/todo-highlight-lsp${BIN_SUFFIX}" "$BIN"
           # sha256sum on Linux/Windows (Git Bash), shasum on macOS
           if command -v sha256sum &>/dev/null; then
             sha256sum "$BIN" | awk '{print $1}' > "${BIN}.sha256"
@@ -83,8 +83,8 @@ jobs:
         with:
           name: ${{ matrix.target }}
           path: |
-            todo-highlighter-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}
-            todo-highlighter-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}.sha256
+            todo-highlight-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}
+            todo-highlight-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}.sha256
 
   release:
     name: Create GitHub Release
@@ -98,6 +98,6 @@ jobs:
       - name: Publish release with binaries and checksums
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          files: todo-highlighter-lsp-*
+          files: todo-highlight-lsp-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,11 +1,11 @@
-id = "todo-highlighter"
-name = "TODO Highlighter"
+id = "todo-highlight"
+name = "TODO Highlight"
 version = "0.1.0"
 schema_version = 1
 authors = ["Shion Ito <frontier.engine+github@gmail.com>"]
 description = "Highlights TODO, FIXME, HACK, NOTE, WARN, BUG and other keywords across all file types"
-repository = "https://github.com/shionit/zed-todo-highlighter"
+repository = "https://github.com/shionit/zed-todo-highlight"
 
-[language_servers.todo-highlighter-lsp]
-name = "TODO Highlighter LSP"
+[language_servers.todo-highlight-lsp]
+name = "TODO Highlight LSP"
 languages = ["Rust", "Python", "JavaScript", "TypeScript", "Go", "C", "C++", "Java", "Ruby", "PHP", "Swift", "Kotlin", "Shell Script", "Markdown", "YAML", "TOML", "JSON", "CSS", "HTML", "Lua", "Zig", "Elixir", "Haskell", "Scala", "Dart", "R"]
