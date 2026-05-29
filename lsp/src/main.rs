@@ -199,7 +199,7 @@ impl Server {
             method: "window/showMessage".to_string(),
             params: serde_json::to_value(ShowMessageParams {
                 typ: MessageType::INFO,
-                message: "TODO Highlighter: keyword highlighting is not active. \
+                message: "TODO Highlight: keyword highlighting is not active. \
                     Add \"semantic_tokens\": \"combined\" and \
                     a semantic_token_rules block to your Zed settings (⌘,). \
                     The README has a complete copy-paste block \
@@ -330,7 +330,7 @@ fn run(connection: Connection, mut server: Server) {
                                 server.hint_eligible = true;
                             }
                         }
-                        Err(e) => eprintln!("todo-highlighter-lsp: bad didOpen params: {e}"),
+                        Err(e) => eprintln!("todo-highlight-lsp: bad didOpen params: {e}"),
                     }
                     // No hint check here — wait for a non-didOpen message so that
                     // the semanticTokens/full requests Zed sends after the didOpen
@@ -352,7 +352,7 @@ fn run(connection: Connection, mut server: Server) {
                                 doc.cached_hits = None;
                             }
                         }
-                        Err(e) => eprintln!("todo-highlighter-lsp: bad didChange params: {e}"),
+                        Err(e) => eprintln!("todo-highlight-lsp: bad didChange params: {e}"),
                     }
                     if let Some(hint) = server.take_hint_if_needed() {
                         let _ = connection.sender.send(hint);
@@ -366,7 +366,7 @@ fn run(connection: Connection, mut server: Server) {
                         Ok(params) => {
                             server.documents.remove(&params.text_document.uri);
                         }
-                        Err(e) => eprintln!("todo-highlighter-lsp: bad didClose params: {e}"),
+                        Err(e) => eprintln!("todo-highlight-lsp: bad didClose params: {e}"),
                     }
                     if let Some(hint) = server.take_hint_if_needed() {
                         let _ = connection.sender.send(hint);
@@ -945,7 +945,7 @@ mod tests {
         assert!(notif["params"]["message"]
             .as_str()
             .unwrap()
-            .contains("TODO Highlighter"));
+            .contains("TODO Highlight"));
 
         send(&client_conn, serde_json::json!({
             "jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": null

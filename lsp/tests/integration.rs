@@ -1,9 +1,9 @@
 /// End-to-end LSP protocol round-trip test.
 ///
-/// Spawns the compiled `todo-highlighter-lsp` binary, performs a full
+/// Spawns the compiled `todo-highlight-lsp` binary, performs a full
 /// LSP handshake, and asserts that semantic tokens come back correctly.
 /// Cargo builds the binary before running integration tests and exposes
-/// its path via `CARGO_BIN_EXE_todo-highlighter-lsp`.
+/// its path via `CARGO_BIN_EXE_todo-highlight-lsp`.
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
 
@@ -49,13 +49,13 @@ impl Drop for ChildGuard {
 }
 
 fn spawn_server() -> ChildGuard {
-    let binary = env!("CARGO_BIN_EXE_todo-highlighter-lsp");
+    let binary = env!("CARGO_BIN_EXE_todo-highlight-lsp");
     let child = Command::new(binary)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("failed to spawn todo-highlighter-lsp");
+        .expect("failed to spawn todo-highlight-lsp");
     ChildGuard(child)
 }
 

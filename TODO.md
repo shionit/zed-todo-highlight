@@ -1,4 +1,4 @@
-# TODO — todo-highlighter
+# TODO — todo-highlight
 
 ## Project Status
 
@@ -25,7 +25,7 @@ The extension is **working end-to-end** — installed as a dev extension in Zed 
   - `download_binary()` builds a platform-specific URL from `zed::current_platform()`
   - Supported platforms: macOS (aarch64, x86_64), Linux (aarch64, x86_64), Windows (x86_64, aarch64)
   - Windows binaries use `.exe` suffix in both the download URL and the on-disk cache path
-  - Versioned on-disk path (`bin/todo-highlighter-lsp-{target}-v{VERSION}`) prevents stale cached binaries after upgrades
+  - Versioned on-disk path (`bin/todo-highlight-lsp-{target}-v{VERSION}`) prevents stale cached binaries after upgrades
   - `zed::make_file_executable` is called on all platforms (no-op on Windows)
   - Compiles clean for `wasm32-wasip1` with zero clippy warnings
 

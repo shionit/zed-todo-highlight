@@ -1,5 +1,5 @@
 [package]
-name = "todo-highlighter-extension"
+name = "todo-highlight-extension"
 version = "0.1.0"
 edition = "2021"
 

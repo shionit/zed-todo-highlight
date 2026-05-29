@@ -7,12 +7,12 @@ echo "==> tests..."
 cargo test --workspace
 
 echo "==> coverage (>= 80% lines required)..."
-cargo llvm-cov --package todo-highlighter-lsp --fail-under-lines 80
+cargo llvm-cov --package todo-highlight-lsp --fail-under-lines 80
 
 echo "==> clippy..."
-cargo clippy -p todo-highlighter-lsp -- -D warnings
+cargo clippy -p todo-highlight-lsp -- -D warnings
 
 echo "==> extension (wasm32-wasip1)..."
-cargo check -p todo-highlighter-extension --target wasm32-wasip1
+cargo check -p todo-highlight-extension --target wasm32-wasip1
 
 echo "All checks passed."

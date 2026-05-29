@@ -1,4 +1,4 @@
-# CLAUDE.md — todo-highlighter
+# CLAUDE.md — todo-highlight
 
 ## Verify before marking work done
 
@@ -6,11 +6,11 @@ Run `./check.sh` — it tests, lints, and validates the WASM build in one shot.
 
 ## Test coverage requirement
 
-Line coverage for `todo-highlighter-lsp` must stay at or above **80%**.
+Line coverage for `todo-highlight-lsp` must stay at or above **80%**.
 
 ```bash
 # Check coverage (fails if below 80%)
-cargo llvm-cov --package todo-highlighter-lsp --fail-under-lines 80
+cargo llvm-cov --package todo-highlight-lsp --fail-under-lines 80
 ```
 
 `check.sh` runs this automatically — do not mark a task complete if it fails.
@@ -22,22 +22,22 @@ shell profile if needed.
 
 ```bash
 # LSP server (native binary)
-cargo build --release -p todo-highlighter-lsp
+cargo build --release -p todo-highlight-lsp
 
 # Extension — always use this target flag; plain cargo check gives false confidence
-cargo check -p todo-highlighter-extension --target wasm32-wasip1
+cargo check -p todo-highlight-extension --target wasm32-wasip1
 
 # Full test suite
 cargo test --workspace
 
 # Lint — warnings are treated as errors
-cargo clippy -p todo-highlighter-lsp -- -D warnings
+cargo clippy -p todo-highlight-lsp -- -D warnings
 ```
 
 ## Dev install in Zed
 
-1. `cargo build --release -p todo-highlighter-lsp`
-2. `cp target/release/todo-highlighter-lsp ~/.local/bin/`
+1. `cargo build --release -p todo-highlight-lsp`
+2. `cp target/release/todo-highlight-lsp ~/.local/bin/`
 3. Zed → Extensions → Install Dev Extension → select the **`extension/`** subdirectory
 4. Add to Zed `settings.json`: `"semantic_tokens": "combined"`
 
