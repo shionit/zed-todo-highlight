@@ -97,6 +97,10 @@ impl TodoHighlightExtension {
                 .iter()
                 .find(|a| a.name == binary_name)
                 .ok_or_else(|| format!("no asset '{binary_name}' in release v{LSP_VERSION}"))?;
+            // `download_file` writes to `binary_path` via `File::create`, which does not
+            // create missing parent directories — the `bin/` dir must exist first.
+            std::fs::create_dir_all("bin")
+                .map_err(|e| format!("failed to create 'bin' directory: {e}"))?;
             zed::download_file(&asset.download_url, &binary_path, DownloadedFileType::Uncompressed)
                 .map_err(|e| format!("Failed to download {binary_name} v{LSP_VERSION}: {e}"))?;
             // `make_file_executable` is a no-op on Windows; safe to call on all platforms.
