@@ -33,54 +33,50 @@ Update these files to the new version string (e.g. `0.2.0`). All four must match
 
 Do not proceed if any check fails.
 
-## Step 4 — Commit the version bump
+## Step 4 — Open a PR for the version bump
+
+`main` is protected by a repository ruleset that blocks direct pushes (PR required,
+no bypass). The version bump must land via PR like any other change.
 
 ```bash
-git add extension/src/lib.rs extension.toml extension/Cargo.toml lsp/Cargo.toml
+git checkout -b chore/bump-version-x.y.z
+git add extension/src/lib.rs extension/extension.toml extension/Cargo.toml lsp/Cargo.toml
 git commit -m "chore: bump version to x.y.z"
+git push -u origin chore/bump-version-x.y.z
+gh pr create --title "chore: bump version to x.y.z" --body "Bump version to x.y.z."
+```
+
+Wait for the PR to be reviewed and merged before continuing.
+
+## Step 5 — Tag the merged commit
+
+The ruleset only covers the `main` branch ref, not tags, so this push goes directly.
+Tag the merge commit on `main` (not the PR branch) so the tag matches what's on the
+default branch.
+
+```bash
+git checkout main
+git pull --ff-only
 git tag vx.y.z
-git push origin main --tags
+git push origin vx.y.z
 ```
 
-## Step 5 — Build release binaries for all targets
+Pushing the tag triggers `.github/workflows/release.yml`, which cross-compiles
+`todo-highlight-lsp` for every target, generates SHA-256 checksums, and creates the
+GitHub Release with all assets attached automatically.
 
-Run each cross-compilation. Requires the targets to be installed via `rustup target add`.
+## Step 6 — Wait for CI and verify the release
 
 ```bash
-CARGO=~/.cargo/bin/cargo
-
-# macOS Apple Silicon
-$CARGO build --release -p todo-highlight-lsp --target aarch64-apple-darwin
-
-# macOS Intel
-$CARGO build --release -p todo-highlight-lsp --target x86_64-apple-darwin
-
-# Linux ARM64
-$CARGO build --release -p todo-highlight-lsp --target aarch64-unknown-linux-gnu
-
-# Linux x86_64
-$CARGO build --release -p todo-highlight-lsp --target x86_64-unknown-linux-gnu
+gh run list --workflow=release.yml --limit 1
+# once that run shows "completed / success":
+gh release view vx.y.z
 ```
 
-Copy and rename binaries to match the names the extension downloads:
-```bash
-cp target/aarch64-apple-darwin/release/todo-highlight-lsp   dist/todo-highlight-lsp-aarch64-apple-darwin
-cp target/x86_64-apple-darwin/release/todo-highlight-lsp    dist/todo-highlight-lsp-x86_64-apple-darwin
-cp target/aarch64-unknown-linux-gnu/release/todo-highlight-lsp  dist/todo-highlight-lsp-aarch64-unknown-linux-gnu
-cp target/x86_64-unknown-linux-gnu/release/todo-highlight-lsp   dist/todo-highlight-lsp-x86_64-unknown-linux-gnu
-```
-
-## Step 6 — Create GitHub Release and upload assets
-
-```bash
-gh release create vx.y.z \
-  --title "v x.y.z" \
-  --notes "Release notes here" \
-  dist/todo-highlight-lsp-aarch64-apple-darwin \
-  dist/todo-highlight-lsp-x86_64-apple-darwin \
-  dist/todo-highlight-lsp-aarch64-unknown-linux-gnu \
-  dist/todo-highlight-lsp-x86_64-unknown-linux-gnu
-```
+Confirm all expected assets (and matching `.sha256` files) are present:
+- `todo-highlight-lsp-{aarch64,x86_64}-apple-darwin`
+- `todo-highlight-lsp-{aarch64,x86_64}-unknown-linux-gnu`
+- `todo-highlight-lsp-{aarch64,x86_64}-pc-windows-msvc.exe`
 
 ## Step 7 — Verify the download works
 
