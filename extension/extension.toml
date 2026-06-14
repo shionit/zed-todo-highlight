@@ -1,6 +1,6 @@
 id = "todo-highlight-language-server"
 name = "TODO Highlight"
-version = "0.2.0"
+version = "0.2.1"
 schema_version = 1
 authors = ["Shion Ito <frontier.engine+github@gmail.com>"]
 description = "Highlights TODO, FIXME, HACK, NOTE, WARN, BUG and other keywords across all file types"
