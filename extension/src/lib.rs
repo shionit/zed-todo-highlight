@@ -65,14 +65,15 @@ impl TodoHighlightExtension {
     fn download_binary(&self) -> Result<String> {
         let (os, arch) = zed::current_platform();
 
-        // `exe_suffix` is ".exe" on Windows and "" everywhere else.
+        // Linux uses musl targets to produce fully-static binaries that run on any
+        // distro (NixOS, Alpine, etc.) without relying on a system glibc.
         let (target, exe_suffix) = match (os, arch) {
-            (Os::Mac, Architecture::Aarch64)     => ("aarch64-apple-darwin",           ""),
-            (Os::Mac, Architecture::X8664)       => ("x86_64-apple-darwin",            ""),
-            (Os::Linux, Architecture::Aarch64)   => ("aarch64-unknown-linux-gnu",      ""),
-            (Os::Linux, Architecture::X8664)     => ("x86_64-unknown-linux-gnu",       ""),
-            (Os::Windows, Architecture::X8664)   => ("x86_64-pc-windows-msvc",   ".exe"),
-            (Os::Windows, Architecture::Aarch64) => ("aarch64-pc-windows-msvc",  ".exe"),
+            (Os::Mac, Architecture::Aarch64)     => ("aarch64-apple-darwin",        ""),
+            (Os::Mac, Architecture::X8664)       => ("x86_64-apple-darwin",         ""),
+            (Os::Linux, Architecture::Aarch64)   => ("aarch64-unknown-linux-musl",  ""),
+            (Os::Linux, Architecture::X8664)     => ("x86_64-unknown-linux-musl",   ""),
+            (Os::Windows, Architecture::X8664)   => ("x86_64-pc-windows-msvc",  ".exe"),
+            (Os::Windows, Architecture::Aarch64) => ("aarch64-pc-windows-msvc", ".exe"),
             (os, arch) => {
                 return Err(format!(
                     "todo-highlight-lsp has no pre-built binary for {os:?}/{arch:?}. \
@@ -81,13 +82,23 @@ impl TodoHighlightExtension {
             }
         };
 
-        let binary_name = format!("todo-highlight-lsp-{target}{exe_suffix}");
+        // Windows ships as .zip; macOS and Linux ship as .tar.gz.
+        let (archive_ext, file_type) = if exe_suffix.is_empty() {
+            (".tar.gz", DownloadedFileType::GzipTar)
+        } else {
+            (".zip", DownloadedFileType::Zip)
+        };
 
-        // Version in the path prevents a stale cached binary from being reused
-        // after an extension upgrade.
-        let binary_path = format!("bin/todo-highlight-lsp-{target}-v{LSP_VERSION}{exe_suffix}");
+        let asset_name = format!("todo-highlight-lsp-{target}{archive_ext}");
+
+        // Version-specific directory: lets download_file extract the archive in place,
+        // and lets cleanup_old_versions identify stale directories to remove.
+        let version_dir = format!("bin/todo-highlight-lsp-{target}-v{LSP_VERSION}");
+        let binary_path = format!("{version_dir}/todo-highlight-lsp{exe_suffix}");
 
         if !std::path::Path::new(&binary_path).exists() {
+            self.cleanup_old_versions(target)?;
+
             let release = zed::github_release_by_tag_name(
                 "shionit/zed-todo-highlight",
                 &format!("v{LSP_VERSION}"),
@@ -95,19 +106,41 @@ impl TodoHighlightExtension {
             let asset = release
                 .assets
                 .iter()
-                .find(|a| a.name == binary_name)
-                .ok_or_else(|| format!("no asset '{binary_name}' in release v{LSP_VERSION}"))?;
-            // `download_file` writes to `binary_path` via `File::create`, which does not
-            // create missing parent directories — the `bin/` dir must exist first.
+                .find(|a| a.name == asset_name)
+                .ok_or_else(|| format!("no asset '{asset_name}' in release v{LSP_VERSION}"))?;
+
+            // `download_file` requires the parent directory to exist.
             std::fs::create_dir_all("bin")
                 .map_err(|e| format!("failed to create 'bin' directory: {e}"))?;
-            zed::download_file(&asset.download_url, &binary_path, DownloadedFileType::Uncompressed)
-                .map_err(|e| format!("Failed to download {binary_name} v{LSP_VERSION}: {e}"))?;
+
+            // For GzipTar/Zip, download_file extracts the archive into version_dir,
+            // placing the binary at version_dir/todo-highlight-lsp[.exe].
+            zed::download_file(&asset.download_url, &version_dir, file_type)
+                .map_err(|e| format!("Failed to download {asset_name} v{LSP_VERSION}: {e}"))?;
+
             // `make_file_executable` is a no-op on Windows; safe to call on all platforms.
             zed::make_file_executable(&binary_path)?;
         }
 
         Ok(binary_path)
+    }
+
+    /// Removes version directories for `target` that don't match the current LSP_VERSION.
+    /// Silently ignores missing or unreadable directories.
+    fn cleanup_old_versions(&self, target: &str) -> Result<()> {
+        let current = format!("todo-highlight-lsp-{target}-v{LSP_VERSION}");
+        let prefix = format!("todo-highlight-lsp-{target}-v");
+        let Ok(entries) = std::fs::read_dir("bin") else {
+            return Ok(());
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(&prefix) && name != current {
+                std::fs::remove_dir_all(entry.path()).ok();
+            }
+        }
+        Ok(())
     }
 }
 
