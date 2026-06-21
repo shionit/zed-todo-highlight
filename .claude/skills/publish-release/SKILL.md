@@ -62,8 +62,9 @@ git push origin vx.y.z
 ```
 
 Pushing the tag triggers `.github/workflows/release.yml`, which cross-compiles
-`todo-highlight-lsp` for every target, generates SHA-256 checksums, and creates the
-GitHub Release with all assets attached automatically.
+`todo-highlight-lsp` for every target, packages each binary as a `.tar.gz` (macOS/Linux)
+or `.zip` (Windows), generates SHA-256 checksums, and creates the GitHub Release with all
+assets attached automatically.
 
 ## Step 6 — Wait for CI and verify the release
 
@@ -74,9 +75,9 @@ gh release view vx.y.z
 ```
 
 Confirm all expected assets (and matching `.sha256` files) are present:
-- `todo-highlight-lsp-{aarch64,x86_64}-apple-darwin`
-- `todo-highlight-lsp-{aarch64,x86_64}-unknown-linux-gnu`
-- `todo-highlight-lsp-{aarch64,x86_64}-pc-windows-msvc.exe`
+- `todo-highlight-lsp-{aarch64,x86_64}-apple-darwin.tar.gz`
+- `todo-highlight-lsp-{aarch64,x86_64}-unknown-linux-musl.tar.gz`
+- `todo-highlight-lsp-{aarch64,x86_64}-pc-windows-msvc.zip`
 
 ## Step 7 — Verify the download works
 
@@ -84,5 +85,6 @@ Install the released version as a dev extension in Zed and confirm the LSP start
 
 Expected URL pattern:
 ```
-https://github.com/shionit/zed-todo-highlight/releases/download/vx.y.z/todo-highlight-lsp-{target}
+https://github.com/shionit/zed-todo-highlight/releases/download/vx.y.z/todo-highlight-lsp-{target}.tar.gz
+https://github.com/shionit/zed-todo-highlight/releases/download/vx.y.z/todo-highlight-lsp-{target}.zip  (Windows)
 ```
