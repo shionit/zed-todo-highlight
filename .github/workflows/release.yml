@@ -21,19 +21,26 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
+            archive_suffix: .tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
+            archive_suffix: .tar.gz
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             use_cross: true
+            archive_suffix: .tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use_cross: true
+            archive_suffix: .tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin_suffix: .exe
+            archive_suffix: .zip
           - os: windows-latest
             target: aarch64-pc-windows-msvc
             bin_suffix: .exe
+            archive_suffix: .zip
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -64,27 +71,34 @@ jobs:
         shell: bash
         run: cargo build --release -p todo-highlight-lsp --target "$TARGET"
 
-      - name: Package binary and generate SHA-256 checksum
+      - name: Package archive and generate SHA-256 checksum
         env:
           TARGET: ${{ matrix.target }}
           BIN_SUFFIX: ${{ matrix.bin_suffix }}
+          ARCHIVE_SUFFIX: ${{ matrix.archive_suffix }}
         shell: bash
         run: |
-          BIN="todo-highlight-lsp-${TARGET}${BIN_SUFFIX}"
-          cp "target/${TARGET}/release/todo-highlight-lsp${BIN_SUFFIX}" "$BIN"
+          BIN="todo-highlight-lsp${BIN_SUFFIX}"
+          ARCHIVE="todo-highlight-lsp-${TARGET}${ARCHIVE_SUFFIX}"
+          if [[ "${ARCHIVE_SUFFIX}" == ".zip" ]]; then
+            # 7-Zip is pre-installed on Windows GitHub Actions runners.
+            (cd "target/${TARGET}/release" && 7z a "../../../${ARCHIVE}" "${BIN}")
+          else
+            tar czf "${ARCHIVE}" -C "target/${TARGET}/release" "${BIN}"
+          fi
           # sha256sum on Linux/Windows (Git Bash), shasum on macOS
           if command -v sha256sum &>/dev/null; then
-            sha256sum "$BIN" | awk '{print $1}' > "${BIN}.sha256"
+            sha256sum "${ARCHIVE}" | awk '{print $1}' > "${ARCHIVE}.sha256"
           else
-            shasum -a 256 "$BIN" | awk '{print $1}' > "${BIN}.sha256"
+            shasum -a 256 "${ARCHIVE}" | awk '{print $1}' > "${ARCHIVE}.sha256"
           fi
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.target }}
           path: |
-            todo-highlight-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}
-            todo-highlight-lsp-${{ matrix.target }}${{ matrix.bin_suffix }}.sha256
+            todo-highlight-lsp-${{ matrix.target }}${{ matrix.archive_suffix }}
+            todo-highlight-lsp-${{ matrix.target }}${{ matrix.archive_suffix }}.sha256
 
   release:
     name: Create GitHub Release
@@ -95,7 +109,7 @@ jobs:
         with:
           merge-multiple: true
 
-      - name: Publish release with binaries and checksums
+      - name: Publish release with archives and checksums
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: todo-highlight-lsp-*
