@@ -46,9 +46,13 @@ Install from the Zed extension registry, or as a dev extension:
 
 ### 2. Add required settings
 
-Open your Zed settings (`⌘,`) and add the following block. Both sections are required — `semantic_tokens` tells Zed to use LSP-based highlighting, and `semantic_token_rules` defines the colors for each keyword.
+Open your **global** Zed settings with `⌘,` (macOS) or `Ctrl+,` (Linux/Windows) and add the following block.
 
-```settings.json
+> **Important:** these settings must go in your **global** `settings.json` (opened with `⌘,`), not in a project-level `.zed/settings.json`. Zed does not support `global_lsp_settings` at the project level and will report *"Property global_lsp_settings is not allowed"* if you place it there.
+
+Both keys are required — `semantic_tokens` tells Zed to use LSP-based highlighting, and `semantic_token_rules` defines the colors for each keyword.
+
+```json
 {
   "semantic_tokens": "combined",
   "global_lsp_settings": {
@@ -96,11 +100,35 @@ Each rule accepts an optional `background_color` field. The palette in the insta
 
 Omit `background_color` from any rule to leave the editor's default background unchanged for that keyword.
 
+## Advanced
+
+### Using a custom binary
+
+By default the extension resolves the LSP binary in order: user-configured path → PATH → GitHub download. To pin a specific binary, add an `lsp` block to your **global** `settings.json`:
+
+```json
+{
+  "lsp": {
+    "todo-highlight-lsp": {
+      "binary": {
+        "path": "/usr/local/bin/todo-highlight-lsp"
+      }
+    }
+  }
+}
+```
+
+When `path` is set the extension uses it directly and skips the PATH lookup and download entirely. Useful for NixOS, custom builds, or managing the binary with a package manager.
+
 ## Troubleshooting
+
+**"Property global_lsp_settings is not allowed"**
+
+You have placed `global_lsp_settings` in a project-level `.zed/settings.json`. This key is only supported in your **global** Zed settings. Open your global settings with `⌘,` and move the `semantic_tokens` and `global_lsp_settings` blocks there.
 
 **Keywords are not highlighted after installation**
 
-1. Confirm both `semantic_tokens` and `semantic_token_rules` are in your `settings.json` (see Installation step 2 above).
+1. Confirm both `semantic_tokens` and `semantic_token_rules` are in your **global** `settings.json` (opened with `⌘,`) — not in `.zed/settings.json`.
 2. Confirm the LSP server is running: Zed → `View` → `Toggle Log` → search for `todo-highlight-lsp`.
 3. If the log shows "binary not found", the LSP binary is not on your PATH — see step 1 of the installation.
 
