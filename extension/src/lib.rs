@@ -31,7 +31,8 @@ impl zed::Extension for TodoHighlightExtension {
 }
 
 impl TodoHighlightExtension {
-    /// Resolves the LSP binary using a three-step strategy:
+    /// Resolves the LSP binary using a four-step strategy:
+    /// 0. User-configured path from Zed LSP settings (skips all other steps).
     /// 1. In-memory cache (avoids repeated lookups when multiple worktrees are open).
     /// 2. Host PATH lookup (covers local development and user-managed installs).
     /// 3. Download from GitHub Releases via the Zed extension API.
@@ -40,6 +41,17 @@ impl TodoHighlightExtension {
         language_server_id: &LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<String> {
+        // Step 0: honour explicit user override from Zed LSP settings:
+        //   { "lsp": { "todo-highlight-lsp": { "binary": { "path": "/custom/path" } } } }
+        if let Ok(lsp_settings) = zed::settings::LspSettings::for_worktree("todo-highlight-lsp", worktree) {
+            if let Some(binary) = lsp_settings.binary {
+                if let Some(path) = binary.path {
+                    eprintln!("todo-highlight: using user-configured binary: {path}");
+                    return Ok(path);
+                }
+            }
+        }
+
         // Step 1: return cached path if binary still exists on disk.
         if let Some(path) = &self.cached_binary_path {
             if std::path::Path::new(path).exists() {
