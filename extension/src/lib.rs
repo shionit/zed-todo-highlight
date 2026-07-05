@@ -18,10 +18,10 @@ impl zed::Extension for TodoHighlightExtension {
 
     fn language_server_command(
         &mut self,
-        _language_server_id: &LanguageServerId,
+        language_server_id: &LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<zed::Command> {
-        let binary_path = self.resolve_binary(worktree)?;
+        let binary_path = self.resolve_binary(language_server_id, worktree)?;
         Ok(zed::Command {
             command: binary_path,
             args: vec![],
@@ -35,7 +35,11 @@ impl TodoHighlightExtension {
     /// 1. In-memory cache (avoids repeated lookups when multiple worktrees are open).
     /// 2. Host PATH lookup (covers local development and user-managed installs).
     /// 3. Download from GitHub Releases via the Zed extension API.
-    fn resolve_binary(&mut self, worktree: &zed::Worktree) -> Result<String> {
+    fn resolve_binary(
+        &mut self,
+        language_server_id: &LanguageServerId,
+        worktree: &zed::Worktree,
+    ) -> Result<String> {
         // Step 1: return cached path if binary still exists on disk.
         if let Some(path) = &self.cached_binary_path {
             if std::path::Path::new(path).exists() {
@@ -56,13 +60,13 @@ impl TodoHighlightExtension {
 
         // Step 3: download a pre-built binary from GitHub Releases.
         eprintln!("todo-highlight: binary not in PATH, attempting download v{LSP_VERSION}");
-        let path = self.download_binary()?;
+        let path = self.download_binary(language_server_id)?;
         eprintln!("todo-highlight: binary ready at {path}");
         self.cached_binary_path = Some(path.clone());
         Ok(path)
     }
 
-    fn download_binary(&self) -> Result<String> {
+    fn download_binary(&self, language_server_id: &LanguageServerId) -> Result<String> {
         let (os, arch) = zed::current_platform();
 
         // Linux uses musl targets to produce fully-static binaries that run on any
@@ -99,24 +103,58 @@ impl TodoHighlightExtension {
         if !std::path::Path::new(&binary_path).exists() {
             self.cleanup_old_versions(target)?;
 
+            zed::set_language_server_installation_status(
+                language_server_id,
+                &zed::LanguageServerInstallationStatus::CheckingForUpdate,
+            );
+
             let release = zed::github_release_by_tag_name(
                 "shionit/zed-todo-highlight",
                 &format!("v{LSP_VERSION}"),
-            )?;
-            let asset = release
-                .assets
-                .iter()
-                .find(|a| a.name == asset_name)
-                .ok_or_else(|| format!("no asset '{asset_name}' in release v{LSP_VERSION}"))?;
+            );
+            let release = match release {
+                Ok(r) => r,
+                Err(e) => {
+                    let msg = format!("Failed to fetch release v{LSP_VERSION}: {e}");
+                    zed::set_language_server_installation_status(
+                        language_server_id,
+                        &zed::LanguageServerInstallationStatus::Failed(msg.clone()),
+                    );
+                    return Err(msg);
+                }
+            };
+
+            let asset = match release.assets.iter().find(|a| a.name == asset_name) {
+                Some(a) => a,
+                None => {
+                    let msg = format!("no asset '{asset_name}' in release v{LSP_VERSION}");
+                    zed::set_language_server_installation_status(
+                        language_server_id,
+                        &zed::LanguageServerInstallationStatus::Failed(msg.clone()),
+                    );
+                    return Err(msg);
+                }
+            };
 
             // `download_file` requires the parent directory to exist.
             std::fs::create_dir_all("bin")
                 .map_err(|e| format!("failed to create 'bin' directory: {e}"))?;
 
+            zed::set_language_server_installation_status(
+                language_server_id,
+                &zed::LanguageServerInstallationStatus::Downloading,
+            );
+
             // For GzipTar/Zip, download_file extracts the archive into version_dir,
             // placing the binary at version_dir/todo-highlight-lsp[.exe].
-            zed::download_file(&asset.download_url, &version_dir, file_type)
-                .map_err(|e| format!("Failed to download {asset_name} v{LSP_VERSION}: {e}"))?;
+            if let Err(e) = zed::download_file(&asset.download_url, &version_dir, file_type) {
+                let msg = format!("Failed to download {asset_name} v{LSP_VERSION}: {e}");
+                zed::set_language_server_installation_status(
+                    language_server_id,
+                    &zed::LanguageServerInstallationStatus::Failed(msg.clone()),
+                );
+                return Err(msg);
+            }
 
             // `make_file_executable` is a no-op on Windows; safe to call on all platforms.
             zed::make_file_executable(&binary_path)?;
