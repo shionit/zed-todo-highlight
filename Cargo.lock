@@ -630,14 +630,14 @@ dependencies = [
 
 [[package]]
 name = "todo-highlight-extension"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "zed_extension_api",
 ]
 
 [[package]]
 name = "todo-highlight-lsp"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "crossbeam-channel",
  "lsp-server",
