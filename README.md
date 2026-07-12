@@ -6,20 +6,11 @@ Highlights `TODO`, `FIXME`, `HACK`, `NOTE`, `WARN`, `BUG` and other keywords acr
 
 Inspired by the VS Code [TODO Highlight](https://marketplace.visualstudio.com/items?itemName=wayou.vscode-todo-highlight) extension.
 
-## Keywords & Default Colors
+## Keywords
 
-| Keyword      | Color      |
-|--------------|------------|
-| `TODO`       | 🟠 Orange  |
-| `FIXME`      | 🔴 Red     |
-| `HACK`       | 🟡 Yellow  |
-| `NOTE`       | 🔵 Blue    |
-| `INFO`       | 🔵 Blue    |
-| `WARN`       | 🟡 Amber   |
-| `WARNING`    | 🟡 Amber   |
-| `BUG`        | 🔴 Red     |
-| `XXX`        | 🟣 Purple  |
-| `DEPRECATED` | ⚫ Gray    |
+`TODO` `FIXME` `HACK` `NOTE` `INFO` `WARN` `WARNING` `BUG` `XXX` `DEPRECATED`
+
+Out of the box, every keyword is highlighted using your theme's `keyword` style — no color configuration required. Per-keyword colors (like the palette in the screenshot above) are an optional override; see [Customizing Colors](#customizing-colors).
 
 ## Installation
 
@@ -44,42 +35,55 @@ Install from the Zed extension registry, or as a dev extension:
 
 2. Zed → Extensions → `Install Dev Extension` → select the **`extension/`** subdirectory
 
-### 2. Add required settings
+### 2. Enable semantic tokens
 
-Open your Zed settings (`⌘,`) and add the following block. Both sections are required — `semantic_tokens` tells Zed to use LSP-based highlighting, and `semantic_token_rules` defines the colors for each keyword.
+Open your **global** Zed settings (`⌘,` on macOS, `Ctrl+,` on Linux/Windows) and add a single line:
 
 ```settings.json
 {
-  "semantic_tokens": "combined",
+  "semantic_tokens": "combined"
+}
+```
+
+That's all. Keywords are now highlighted with your theme's `keyword` style in every supported language. No color rules are required.
+
+> **Why is this setting needed?**
+> Zed treats semantic-token highlighting as opt-in, and extensions cannot change editor-wide settings on your behalf. Once added, the setting applies to all projects and never needs to be touched again.
+
+## Customizing Colors
+
+By default all keywords share your theme's `keyword` style. To give keywords distinct colors, add override rules to your settings.
+
+The LSP server emits every keyword as the standard `keyword` token type plus a keyword-specific **modifier** — the keyword name in lowercase (`todo`, `fixme`, `hack`, `note`, `info`, `warn`, `warning`, `bug`, `xxx`, `deprecated`). Override rules match on those modifiers, take precedence over Zed's built-in defaults, and only affect this extension's tokens (other language servers don't use these modifiers).
+
+> **Important:** override rules live under `global_lsp_settings`, which Zed only accepts in your **global** `settings.json` (opened with `⌘,`) — not in a project-level `.zed/settings.json`. Zed reports *"Property global_lsp_settings is not allowed"* if you place it there.
+
+Example — a full per-keyword palette with optional dark-theme backgrounds (shown in the screenshot above):
+
+```settings.json
+{
   "global_lsp_settings": {
     "semantic_token_rules": [
-      { "token_type": "todoKeyword",       "foreground_color": "#FF8C00", "background_color": "#2B1700", "font_weight": "bold" },
-      { "token_type": "fixmeKeyword",      "foreground_color": "#FF2D55", "background_color": "#2B0011", "font_weight": "bold" },
-      { "token_type": "hackKeyword",       "foreground_color": "#FFD60A", "background_color": "#272100", "font_weight": "bold" },
-      { "token_type": "noteKeyword",       "foreground_color": "#0A84FF", "background_color": "#001B2B", "font_weight": "bold" },
-      { "token_type": "infoKeyword",       "foreground_color": "#0A84FF", "background_color": "#001B2B", "font_weight": "bold" },
-      { "token_type": "warnKeyword",       "foreground_color": "#FF9F0A", "background_color": "#271B00", "font_weight": "bold" },
-      { "token_type": "warningKeyword",    "foreground_color": "#FF9F0A", "background_color": "#271B00", "font_weight": "bold" },
-      { "token_type": "bugKeyword",        "foreground_color": "#FF453A", "background_color": "#2B0A00", "font_weight": "bold" },
-      { "token_type": "xxxKeyword",        "foreground_color": "#BF5AF2", "background_color": "#1B0029", "font_weight": "bold" },
-      { "token_type": "deprecatedKeyword", "foreground_color": "#98989D", "background_color": "#1A1A1A", "font_weight": "bold" }
+      { "token_type": "keyword", "token_modifiers": ["todo"],       "foreground_color": "#FF8C00", "background_color": "#2B1700", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["fixme"],      "foreground_color": "#FF2D55", "background_color": "#2B0011", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["hack"],       "foreground_color": "#FFD60A", "background_color": "#272100", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["note"],       "foreground_color": "#0A84FF", "background_color": "#001B2B", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["info"],       "foreground_color": "#0A84FF", "background_color": "#001B2B", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["warn"],       "foreground_color": "#FF9F0A", "background_color": "#271B00", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["warning"],    "foreground_color": "#FF9F0A", "background_color": "#271B00", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["bug"],        "foreground_color": "#FF453A", "background_color": "#2B0A00", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["xxx"],        "foreground_color": "#BF5AF2", "background_color": "#1B0029", "font_weight": "bold" },
+      { "token_type": "keyword", "token_modifiers": ["deprecated"], "foreground_color": "#98989D", "background_color": "#1A1A1A", "font_weight": "bold" }
     ]
   }
 }
 ```
 
-> **Why are these settings needed?**
-> Zed treats semantic token highlighting as opt-in (`semantic_tokens`) and requires explicit color definitions for custom token types (`semantic_token_rules`). These are Zed-wide settings that extensions cannot set on your behalf. Once added, the settings apply to all projects and never need to be touched again.
-
-## Customizing Colors
-
-### Foreground color
-
-Change any color by editing the `foreground_color` value in your `settings.json`. Standard hex colors are supported.
+Customize freely: pick any subset of keywords, change any `foreground_color`, or drop fields you don't need.
 
 ### Background color
 
-Each rule accepts an optional `background_color` field. The palette in the installation example above uses colors derived from each keyword's foreground hue at low lightness, tuned for dark themes:
+Each rule accepts an optional `background_color` field. The palette above uses colors derived from each keyword's foreground hue at low lightness, tuned for dark themes:
 
 | Keyword | Background |
 |---------|-----------|
@@ -96,23 +100,40 @@ Each rule accepts an optional `background_color` field. The palette in the insta
 
 Omit `background_color` from any rule to leave the editor's default background unchanged for that keyword.
 
+### Migrating from v0.2.x
+
+Earlier versions emitted custom token types (`todoKeyword`, `fixmeKeyword`, …) and required a `semantic_token_rules` block for any highlighting at all. Those token types no longer exist, so old rules silently stop matching — highlighting still works via the default `keyword` style, but your custom colors won't apply until you update each rule:
+
+```diff
+-  { "token_type": "todoKeyword", "foreground_color": "#FF8C00", "font_weight": "bold" }
++  { "token_type": "keyword", "token_modifiers": ["todo"], "foreground_color": "#FF8C00", "font_weight": "bold" }
+```
+
+If you were happy with the example palette, simply replace your old block with the one in [Customizing Colors](#customizing-colors). If you never got around to configuring rules, you can now delete the requirement from your mental checklist — only `"semantic_tokens": "combined"` is needed.
+
 ## Troubleshooting
 
 **Keywords are not highlighted after installation**
 
-1. Confirm both `semantic_tokens` and `semantic_token_rules` are in your `settings.json` (see Installation step 2 above).
+1. Confirm `"semantic_tokens": "combined"` is in your **global** `settings.json` (opened with `⌘,`).
 2. Confirm the LSP server is running: Zed → `View` → `Toggle Log` → search for `todo-highlight-lsp`.
 3. If the log shows "binary not found", the LSP binary is not on your PATH — see step 1 of the installation.
 
-> If you installed the extension without configuring settings yet, the extension will show a notification after you open two files guiding you to the required settings.
+> If you installed the extension without enabling semantic tokens yet, the extension will show a notification after you open two files guiding you to the required setting.
+
+**"Property global_lsp_settings is not allowed"**
+
+You placed color-override rules in a project-level `.zed/settings.json`. Zed only supports `global_lsp_settings` in your **global** settings file — open it with `⌘,` and move the block there.
 
 **Only some keywords are highlighted**
 
 The extension uses word-boundary matching (`\bKEYWORD\b`), so `TODOS` will not match `TODO`. Check for extra characters attached to the keyword.
 
-**Colors look wrong or missing**
+**Custom colors don't apply**
 
-Zed merges `semantic_token_rules` from your active theme and from `global_lsp_settings`. If a theme already defines a token type name that conflicts, the theme value wins. Try switching to a different theme, or remove conflicting entries from the theme's definition.
+1. Rules must be in your **global** settings file, not a project-level one (see above).
+2. After migrating from v0.2.x, rules must match on `token_modifiers` — `token_type: "todoKeyword"` no longer matches anything (see [Migrating from v0.2.x](#migrating-from-v02x)).
+3. Earlier rules take precedence: if another rule above yours also matches (e.g. a bare `"token_type": "keyword"` rule), it wins for the properties it sets.
 
 ## Architecture
 

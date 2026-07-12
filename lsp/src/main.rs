@@ -67,8 +67,8 @@ fn apply_text_change(
 // Token scanning
 // ---------------------------------------------------------------------------
 
-/// Raw match: (line, col_utf16, length_utf16, token_type_index).
-type Hit = (u32, u32, u32, u32);
+/// Raw match: (line, col_utf16, length_utf16, token_type_index, token_modifiers_bitset).
+type Hit = (u32, u32, u32, u32, u32);
 
 fn find_hits(text: &str, keywords: &[Keyword]) -> Vec<Hit> {
     let line_starts: Vec<usize> = {
@@ -95,7 +95,13 @@ fn find_hits(text: &str, keywords: &[Keyword]) -> Vec<Hit> {
         for m in kw.pattern.find_iter(text) {
             let (line, col) = byte_to_line_col(m.start());
             let len_utf16 = m.as_str().encode_utf16().count() as u32;
-            hits.push((line, col, len_utf16, kw.token_type_index));
+            hits.push((
+                line,
+                col,
+                len_utf16,
+                kw.token_type_index,
+                kw.token_modifiers_bitset,
+            ));
         }
     }
     hits.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
@@ -107,7 +113,7 @@ fn delta_encode(hits: &[Hit]) -> Vec<SemanticToken> {
     let mut tokens = Vec::with_capacity(hits.len());
     let mut prev_line = 0u32;
     let mut prev_start = 0u32;
-    for &(line, col, length, token_type) in hits {
+    for &(line, col, length, token_type, token_modifiers_bitset) in hits {
         let delta_line = line - prev_line;
         let delta_start = if delta_line == 0 { col - prev_start } else { col };
         tokens.push(SemanticToken {
@@ -115,7 +121,7 @@ fn delta_encode(hits: &[Hit]) -> Vec<SemanticToken> {
             delta_start,
             length,
             token_type,
-            token_modifiers_bitset: 0,
+            token_modifiers_bitset,
         });
         prev_line = line;
         prev_start = col;
@@ -216,11 +222,9 @@ impl Server {
         self.setup_hint_sent = true;
         let message = if self.client_supports_semantic_tokens {
             "TODO Highlight: keyword highlighting is not active. \
-                Add \"semantic_tokens\": \"combined\" and \
-                a semantic_token_rules block to your global Zed settings \
-                (⌘, / Ctrl+,) — not a project-level .zed/settings.json. \
-                The README has a complete copy-paste block \
-                including optional background colors."
+                Add \"semantic_tokens\": \"combined\" to your global Zed \
+                settings (⌘, / Ctrl+,). That single setting is all that is \
+                required — see the README for optional per-keyword colors."
         } else {
             "TODO Highlight: your editor did not advertise LSP semantic token \
                 support, so keyword highlighting cannot work. \
@@ -521,9 +525,15 @@ mod tests {
         assert_eq!(tokens[0].delta_line, 0);
         assert_eq!(tokens[0].delta_start, 3);
         assert_eq!(tokens[0].length, 4);
+        // All keywords share the standard `keyword` token type (index 0) and
+        // are distinguished by their modifier bit.
+        assert_eq!(tokens[0].token_type, 0);
+        assert_eq!(tokens[0].token_modifiers_bitset, 1 << 0); // todo
         assert_eq!(tokens[1].delta_line, 1);
         assert_eq!(tokens[1].delta_start, 3);
         assert_eq!(tokens[1].length, 5);
+        assert_eq!(tokens[1].token_type, 0);
+        assert_eq!(tokens[1].token_modifiers_bitset, 1 << 1); // fixme
     }
 
     #[test]
@@ -536,7 +546,12 @@ mod tests {
     fn test_all_keywords() {
         let kws = make_keywords();
         let text = "TODO FIXME HACK NOTE INFO WARN WARNING BUG XXX DEPRECATED";
-        assert_eq!(scan_tokens(text, &kws).len(), 10);
+        let tokens = scan_tokens(text, &kws);
+        assert_eq!(tokens.len(), 10);
+        for (i, token) in tokens.iter().enumerate() {
+            assert_eq!(token.token_type, 0);
+            assert_eq!(token.token_modifiers_bitset, 1 << i);
+        }
     }
 
     #[test]

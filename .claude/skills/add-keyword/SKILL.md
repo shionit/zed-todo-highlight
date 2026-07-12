@@ -9,23 +9,38 @@ Complete all steps below in order. Do not skip any — each touches a different 
 
 ## Step 1 — LSP server: register the keyword
 
-File: `lsp/src/main.rs`, function `build_keywords()`.
+File: `lsp/src/keywords.rs`, function `build_keywords()`.
 
 Add a new entry to the `definitions` array:
 ```rust
-("KEYWORD", "keywordKeyword"),
+("KEYWORD", "keyword"),
 ```
 
-Convention: token type name is the keyword in lowercase + `"Keyword"` suffix (e.g. `IDEA` → `ideaKeyword`).
+Convention: the second element is the semantic token **modifier** — the keyword in lowercase (e.g. `IDEA` → `"idea"`). All keywords share the standard `keyword` token type; the modifier bit and legend entry are derived automatically from the array index.
 
-## Step 2 — Default color: semantic_token_rules.json
+## Step 2 — Tests: update the keyword assertions
 
-File: `languages/all/semantic_token_rules.json`.
+File: `lsp/src/main.rs`, test `test_all_keywords`.
 
-Add a new object to the JSON array:
-```json
-{ "token_type": "keywordKeyword", "foreground_color": "#RRGGBB", "font_weight": "bold" }
+Add the new keyword to the test string and increment the expected count:
+```rust
+let text = "TODO FIXME HACK NOTE INFO WARN WARNING BUG XXX DEPRECATED KEYWORD";
+let tokens = scan_tokens(text, &kws);
+assert_eq!(tokens.len(), 11); // was 10
 ```
+
+The per-token modifier-bit loop needs no change — bits are derived from definition order, which matches the text above.
+
+## Step 3 — README: update keyword docs
+
+File: `README.md`.
+
+1. Add the keyword to the list in the **Keywords** section.
+2. Add a rule line to the palette example in **Customizing Colors**:
+   ```json
+   { "token_type": "keyword", "token_modifiers": ["keyword-lowercase"], "foreground_color": "#RRGGBB", "font_weight": "bold" }
+   ```
+3. If you give it a background color, add a row to the background table.
 
 Pick a color that doesn't clash with the existing set. Current palette:
 - Orange `#FF8C00` — TODO
@@ -37,27 +52,10 @@ Pick a color that doesn't clash with the existing set. Current palette:
 - Purple `#BF5AF2` — XXX
 - Gray `#98989D` — DEPRECATED
 
-## Step 3 — Tests: update the keyword count assertion
-
-File: `lsp/src/main.rs`, test `test_all_keywords`.
-
-Add the new keyword to the test string and increment the expected count:
-```rust
-let text = "TODO FIXME HACK NOTE INFO WARN WARNING BUG XXX DEPRECATED KEYWORD";
-let tokens = scan_tokens(text, &kws);
-assert_eq!(tokens.len(), 11); // was 10
-```
-
-## Step 4 — README: update the keyword table
-
-File: `README.md`.
-
-Add a row to the keyword/color table. Match the format of existing rows.
-
-## Step 5 — Verify
+## Step 4 — Verify
 
 ```bash
 ./check.sh
 ```
 
-All 4 steps must be done before running this. If any test fails, fix it before continuing.
+All previous steps must be done before running this. If any test fails, fix it before continuing.
