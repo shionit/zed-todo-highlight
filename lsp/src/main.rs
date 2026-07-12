@@ -154,22 +154,28 @@ struct Document {
 struct Server {
     keywords: Vec<Keyword>,
     documents: HashMap<Url, Document>,
+    // Whether the client advertised `textDocument.semanticTokens` support in
+    // its `initialize` request. When false, the client will never request
+    // tokens, so the setup hint can point at the editor version instead of
+    // the settings file.
+    client_supports_semantic_tokens: bool,
     // Setup-hint tracking — detect when semantic tokens are not enabled in Zed.
     documents_opened: usize,
     // Set to true once 2+ documents have been opened. The hint is only eligible
-    // to fire after this point, and only on a non-didOpen message so that Zed's
-    // initial batch of didOpen + semanticTokens/full messages is fully processed
-    // before we conclude that semantic tokens are unconfigured.
+    // to fire after this point, and only on a didChange/didClose message so that
+    // Zed's initial batch of didOpen + semanticTokens/full messages is fully
+    // processed before we conclude that semantic tokens are unconfigured.
     hint_eligible: bool,
     semantic_tokens_ever_requested: bool,
     setup_hint_sent: bool,
 }
 
 impl Server {
-    fn new(keywords: Vec<Keyword>) -> Self {
+    fn new(keywords: Vec<Keyword>, client_supports_semantic_tokens: bool) -> Self {
         Self {
             keywords,
             documents: HashMap::new(),
+            client_supports_semantic_tokens,
             documents_opened: 0,
             hint_eligible: false,
             semantic_tokens_ever_requested: false,
@@ -177,34 +183,54 @@ impl Server {
         }
     }
 
-    /// Returns true when the hint should be sent: at least 2 documents were opened,
-    /// no semantic token request has ever arrived, and the hint hasn't been sent yet.
+    /// Returns true when the hint should be sent: no semantic token request has
+    /// ever arrived and the hint hasn't been sent yet, plus either
+    /// - the client never advertised semantic token support (tokens can never
+    ///   arrive, so no further evidence is needed), or
+    /// - at least 2 documents were opened without a single token request.
     ///
-    /// Checked only on non-didOpen messages so Zed's initial batch of
-    /// `didOpen` + `semanticTokens/full` messages can fully arrive before we
-    /// conclude that semantic tokens are unconfigured.
+    /// Checked only on didChange/didClose so Zed's initial batch of
+    /// `didOpen` + `semanticTokens/full` messages (which Zed debounces by
+    /// ~50 ms) can fully arrive before we conclude that semantic tokens are
+    /// unconfigured. Notably NOT checked when a response to our
+    /// `workspace/semanticTokens/refresh` request arrives — that response can
+    /// land inside the debounce window and previously caused a false warning
+    /// even when settings were correct.
     fn should_send_setup_hint(&self) -> bool {
-        self.hint_eligible && !self.semantic_tokens_ever_requested && !self.setup_hint_sent
+        if self.setup_hint_sent || self.semantic_tokens_ever_requested {
+            return false;
+        }
+        if !self.client_supports_semantic_tokens {
+            return true;
+        }
+        self.hint_eligible
     }
 
     /// Returns the setup hint notification if it is due, marking it as sent.
     ///
-    /// Call this after processing any non-didOpen message.
+    /// Call this after processing a didChange or didClose message.
     fn take_hint_if_needed(&mut self) -> Option<Message> {
         if !self.should_send_setup_hint() {
             return None;
         }
         self.setup_hint_sent = true;
+        let message = if self.client_supports_semantic_tokens {
+            "TODO Highlight: keyword highlighting is not active. \
+                Add \"semantic_tokens\": \"combined\" and \
+                a semantic_token_rules block to your global Zed settings \
+                (⌘, / Ctrl+,) — not a project-level .zed/settings.json. \
+                The README has a complete copy-paste block \
+                including optional background colors."
+        } else {
+            "TODO Highlight: your editor did not advertise LSP semantic token \
+                support, so keyword highlighting cannot work. \
+                Please update Zed to a recent version."
+        };
         Some(Message::Notification(lsp_server::Notification {
             method: "window/showMessage".to_string(),
             params: serde_json::to_value(ShowMessageParams {
                 typ: MessageType::INFO,
-                message: "TODO Highlight: keyword highlighting is not active. \
-                    Add \"semantic_tokens\": \"combined\" and \
-                    a semantic_token_rules block to your Zed settings (⌘,). \
-                    The README has a complete copy-paste block \
-                    including optional background colors."
-                    .to_string(),
+                message: message.to_string(),
             })
             .unwrap(),
         }))
@@ -244,7 +270,29 @@ impl Server {
 // Server run loop
 // ---------------------------------------------------------------------------
 
+/// Sends a `window/logMessage` notification so users can diagnose the server
+/// from Zed's LSP logs (`dev: open language server logs`).
+fn log_message(connection: &Connection, message: String) {
+    let _ = connection.sender.send(Message::Notification(lsp_server::Notification {
+        method: "window/logMessage".to_string(),
+        params: serde_json::to_value(lsp_types::LogMessageParams {
+            typ: MessageType::LOG,
+            message,
+        })
+        .unwrap(),
+    }));
+}
+
 fn run(connection: Connection, mut server: Server) {
+    log_message(
+        &connection,
+        format!(
+            "todo-highlight-lsp v{}: initialized; client semantic-token support: {}",
+            env!("CARGO_PKG_VERSION"),
+            server.client_supports_semantic_tokens,
+        ),
+    );
+
     // Zed does not automatically re-request semantic tokens for documents that
     // were already open when the LSP server starts.  Sending a refresh here
     // tells Zed to request tokens for every open document immediately.
@@ -260,6 +308,19 @@ fn run(connection: Connection, mut server: Server) {
             Message::Request(req) => {
                 if connection.handle_shutdown(&req).unwrap() {
                     break;
+                }
+
+                let is_token_request = matches!(
+                    req.method.as_str(),
+                    SemanticTokensFullRequest::METHOD | SemanticTokensRangeRequest::METHOD
+                );
+                if is_token_request && !server.semantic_tokens_ever_requested {
+                    log_message(
+                        &connection,
+                        "todo-highlight-lsp: first semantic token request received — \
+                            keyword highlighting is active"
+                            .to_string(),
+                    );
                 }
 
                 let resp = match req.method.as_str() {
@@ -303,12 +364,6 @@ fn run(connection: Connection, mut server: Server) {
                 };
 
                 connection.sender.send(Message::Response(resp)).unwrap();
-                // Checked here (not inside didOpen) so Zed's initial didOpen batch
-                // has already been followed by any semanticTokens/full requests before
-                // we judge whether semantic tokens are configured.
-                if let Some(hint) = server.take_hint_if_needed() {
-                    let _ = connection.sender.send(hint);
-                }
             }
 
             Message::Notification(notif) => match notif.method.as_str() {
@@ -376,12 +431,12 @@ fn run(connection: Connection, mut server: Server) {
                 _ => {}
             },
 
-            Message::Response(_) => {
-                // Response to workspace/semanticTokens/refresh — fire-and-forget.
-                if let Some(hint) = server.take_hint_if_needed() {
-                    let _ = connection.sender.send(hint);
-                }
-            }
+            // Response to workspace/semanticTokens/refresh — fire-and-forget.
+            // Deliberately NOT a hint checkpoint: Zed debounces its semantic
+            // token requests by ~50 ms after didOpen, so this response can
+            // arrive before the first token request and would trigger a false
+            // "highlighting is not active" warning (issue #15).
+            Message::Response(_) => {}
         }
     }
 }
@@ -390,9 +445,17 @@ fn run(connection: Connection, mut server: Server) {
 // Entry point
 // ---------------------------------------------------------------------------
 
+/// Reads `capabilities.textDocument.semanticTokens` from the raw `initialize`
+/// params. Operates on the raw JSON so an unexpected client shape degrades to
+/// "unsupported" instead of failing deserialization.
+fn client_supports_semantic_tokens(init_params: &serde_json::Value) -> bool {
+    init_params
+        .pointer("/capabilities/textDocument/semanticTokens")
+        .is_some_and(|v| !v.is_null())
+}
+
 fn main() {
     let (keywords, legend) = build_keywords();
-    let server = Server::new(keywords);
 
     let (connection, io_threads) = Connection::stdio();
 
@@ -416,7 +479,8 @@ fn main() {
     })
     .unwrap();
 
-    connection.initialize(server_capabilities).unwrap();
+    let init_params = connection.initialize(server_capabilities).unwrap();
+    let server = Server::new(keywords, client_supports_semantic_tokens(&init_params));
     run(connection, server);
     io_threads.join().unwrap();
 }
@@ -437,7 +501,7 @@ mod tests {
 
     fn make_server() -> Server {
         let (kws, _) = build_keywords();
-        Server::new(kws)
+        Server::new(kws, true)
     }
 
     fn make_range(start_line: u32, start_col: u32, end_line: u32, end_col: u32) -> Range {
@@ -652,6 +716,67 @@ mod tests {
         assert!(!server.should_send_setup_hint());
     }
 
+    #[test]
+    fn setup_hint_fires_without_eligibility_when_client_unsupported() {
+        // A client that never advertised semantic token support can never
+        // request tokens, so the hint needs no didOpen threshold.
+        let (kws, _) = build_keywords();
+        let server = Server::new(kws, false);
+        assert!(server.should_send_setup_hint());
+    }
+
+    #[test]
+    fn setup_hint_message_mentions_settings_when_client_supported() {
+        let mut server = make_server();
+        server.hint_eligible = true;
+        let msg = server.take_hint_if_needed().unwrap();
+        let json = serde_json::to_value(msg).unwrap();
+        let text = json["params"]["message"].as_str().unwrap();
+        assert!(text.contains("global Zed settings"));
+        assert!(text.contains("semantic_tokens"));
+    }
+
+    #[test]
+    fn setup_hint_message_mentions_editor_when_client_unsupported() {
+        let (kws, _) = build_keywords();
+        let mut server = Server::new(kws, false);
+        let msg = server.take_hint_if_needed().unwrap();
+        let json = serde_json::to_value(msg).unwrap();
+        let text = json["params"]["message"].as_str().unwrap();
+        assert!(text.contains("semantic token"));
+        assert!(text.contains("update Zed"));
+        // Sent once only.
+        assert!(server.take_hint_if_needed().is_none());
+    }
+
+    // --- client_supports_semantic_tokens --------------------------------------
+
+    #[test]
+    fn detects_semantic_token_capability_in_initialize_params() {
+        let params = serde_json::json!({
+            "capabilities": {
+                "textDocument": { "semanticTokens": { "requests": { "full": true } } }
+            }
+        });
+        assert!(client_supports_semantic_tokens(&params));
+    }
+
+    #[test]
+    fn missing_or_null_semantic_token_capability_is_unsupported() {
+        let absent = serde_json::json!({
+            "capabilities": { "textDocument": {} }
+        });
+        assert!(!client_supports_semantic_tokens(&absent));
+
+        let null = serde_json::json!({
+            "capabilities": { "textDocument": { "semanticTokens": null } }
+        });
+        assert!(!client_supports_semantic_tokens(&null));
+
+        let empty = serde_json::json!({});
+        assert!(!client_supports_semantic_tokens(&empty));
+    }
+
     // --- Server::tokens_for_range -------------------------------------------
 
     #[test]
@@ -736,11 +861,21 @@ mod tests {
         serde_json::to_value(msg).unwrap()
     }
 
+    /// Drains the two startup messages `run()` always sends: the
+    /// window/logMessage diagnostic and the workspace/semanticTokens/refresh
+    /// request.
+    fn drain_startup(conn: &Connection) {
+        let log = recv(conn);
+        assert_eq!(log["method"], "window/logMessage");
+        let refresh = recv(conn);
+        assert_eq!(refresh["method"], "workspace/semanticTokens/refresh");
+    }
+
     #[test]
     fn run_responds_to_semantic_tokens_full() {
         let (server_conn, client_conn) = make_in_process_connection();
         let (kws, _) = build_keywords();
-        let server = Server::new(kws);
+        let server = Server::new(kws, true);
         let handle = std::thread::spawn(move || run(server_conn, server));
 
         send(&client_conn, serde_json::json!({
@@ -755,9 +890,12 @@ mod tests {
             "params": { "textDocument": { "uri": "file:///tmp/run_test.rs" } }
         }));
 
-        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
-        let startup = recv(&client_conn);
-        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
+        drain_startup(&client_conn);
+
+        // The first semantic token request emits a diagnostic logMessage
+        // before the response.
+        let tok_log = recv(&client_conn);
+        assert_eq!(tok_log["method"], "window/logMessage");
 
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 10);
@@ -779,7 +917,7 @@ mod tests {
     fn run_responds_to_semantic_tokens_range() {
         let (server_conn, client_conn) = make_in_process_connection();
         let (kws, _) = build_keywords();
-        let server = Server::new(kws);
+        let server = Server::new(kws, true);
         let handle = std::thread::spawn(move || run(server_conn, server));
 
         send(&client_conn, serde_json::json!({
@@ -798,9 +936,12 @@ mod tests {
             }
         }));
 
-        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
-        let startup = recv(&client_conn);
-        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
+        drain_startup(&client_conn);
+
+        // The first semantic token request emits a diagnostic logMessage
+        // before the response.
+        let tok_log = recv(&client_conn);
+        assert_eq!(tok_log["method"], "window/logMessage");
 
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 11);
@@ -821,7 +962,7 @@ mod tests {
     fn run_did_change_updates_tokens() {
         let (server_conn, client_conn) = make_in_process_connection();
         let (kws, _) = build_keywords();
-        let server = Server::new(kws);
+        let server = Server::new(kws, true);
         let handle = std::thread::spawn(move || run(server_conn, server));
 
         send(&client_conn, serde_json::json!({
@@ -844,9 +985,12 @@ mod tests {
             "params": { "textDocument": { "uri": "file:///tmp/change.rs" } }
         }));
 
-        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
-        let startup = recv(&client_conn);
-        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
+        drain_startup(&client_conn);
+
+        // The first semantic token request emits a diagnostic logMessage
+        // before the response.
+        let tok_log = recv(&client_conn);
+        assert_eq!(tok_log["method"], "window/logMessage");
 
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 13);
@@ -867,7 +1011,7 @@ mod tests {
     fn run_did_close_removes_document() {
         let (server_conn, client_conn) = make_in_process_connection();
         let (kws, _) = build_keywords();
-        let server = Server::new(kws);
+        let server = Server::new(kws, true);
         let handle = std::thread::spawn(move || run(server_conn, server));
 
         send(&client_conn, serde_json::json!({
@@ -887,9 +1031,12 @@ mod tests {
             "params": { "textDocument": { "uri": "file:///tmp/close_me.rs" } }
         }));
 
-        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
-        let startup = recv(&client_conn);
-        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
+        drain_startup(&client_conn);
+
+        // The first semantic token request emits a diagnostic logMessage
+        // before the response.
+        let tok_log = recv(&client_conn);
+        assert_eq!(tok_log["method"], "window/logMessage");
 
         let resp = recv(&client_conn);
         assert_eq!(resp["id"], 14);
@@ -910,7 +1057,7 @@ mod tests {
     fn run_setup_hint_sent_after_two_opens_without_token_request() {
         let (server_conn, client_conn) = make_in_process_connection();
         let (kws, _) = build_keywords();
-        let server = Server::new(kws);
+        let server = Server::new(kws, true);
         let handle = std::thread::spawn(move || run(server_conn, server));
 
         for i in 0..2u32 {
@@ -935,9 +1082,7 @@ mod tests {
             }
         }));
 
-        // Server sends workspace/semanticTokens/refresh at startup — drain it first.
-        let startup = recv(&client_conn);
-        assert_eq!(startup["method"], "workspace/semanticTokens/refresh");
+        drain_startup(&client_conn);
 
         // The server should emit a window/showMessage hint.
         let notif = recv(&client_conn);
@@ -951,6 +1096,73 @@ mod tests {
             "jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": null
         }));
         recv(&client_conn);
+        send(&client_conn, serde_json::json!({
+            "jsonrpc": "2.0", "method": "exit", "params": null
+        }));
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn run_refresh_response_does_not_trigger_hint() {
+        // Regression test for issue #15: Zed's response to our
+        // workspace/semanticTokens/refresh request can arrive after the
+        // didOpen batch but before the (debounced) semantic token requests.
+        // That response must not fire the setup hint.
+        let (server_conn, client_conn) = make_in_process_connection();
+        let (kws, _) = build_keywords();
+        let server = Server::new(kws, true);
+        let handle = std::thread::spawn(move || run(server_conn, server));
+
+        for i in 0..2u32 {
+            send(&client_conn, serde_json::json!({
+                "jsonrpc": "2.0", "method": "textDocument/didOpen",
+                "params": { "textDocument": {
+                    "uri": format!("file:///tmp/race_{i}.rs"), "languageId": "rust",
+                    "version": 1, "text": "// TODO: race"
+                }}
+            }));
+        }
+        // Zed replies to the refresh request (id 1) before its debounced
+        // token requests go out.
+        send(&client_conn, serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "result": null
+        }));
+        // The debounced token request arrives afterwards.
+        send(&client_conn, serde_json::json!({
+            "jsonrpc": "2.0", "id": 20, "method": "textDocument/semanticTokens/full",
+            "params": { "textDocument": { "uri": "file:///tmp/race_0.rs" } }
+        }));
+        // A later user edit — by now tokens were requested, so still no hint.
+        send(&client_conn, serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didChange",
+            "params": {
+                "textDocument": { "uri": "file:///tmp/race_0.rs", "version": 2 },
+                "contentChanges": [{ "text": "// TODO: edited" }]
+            }
+        }));
+        send(&client_conn, serde_json::json!({
+            "jsonrpc": "2.0", "id": 21, "method": "textDocument/semanticTokens/full",
+            "params": { "textDocument": { "uri": "file:///tmp/race_0.rs" } }
+        }));
+
+        drain_startup(&client_conn);
+
+        // First token request logs a diagnostic, then responds — with no
+        // window/showMessage hint in between.
+        let tok_log = recv(&client_conn);
+        assert_eq!(tok_log["method"], "window/logMessage");
+        let resp = recv(&client_conn);
+        assert_eq!(resp["id"], 20);
+
+        // The second token request responds directly (no further log).
+        let resp = recv(&client_conn);
+        assert_eq!(resp["id"], 21);
+
+        send(&client_conn, serde_json::json!({
+            "jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": null
+        }));
+        let shutdown_resp = recv(&client_conn);
+        assert_eq!(shutdown_resp["id"], 99);
         send(&client_conn, serde_json::json!({
             "jsonrpc": "2.0", "method": "exit", "params": null
         }));

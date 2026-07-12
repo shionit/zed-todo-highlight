@@ -77,7 +77,12 @@ fn semantic_tokens_full_round_trip() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
-            "params": { "capabilities": {}, "rootUri": null }
+            "params": {
+                "capabilities": {
+                    "textDocument": { "semanticTokens": { "requests": { "full": true } } }
+                },
+                "rootUri": null
+            }
         }),
     );
     let resp = lsp_recv(&mut stdout);
@@ -96,7 +101,10 @@ fn semantic_tokens_full_round_trip() {
             "params": {}
         }),
     );
-    // Server sends workspace/semanticTokens/refresh at startup — consume it.
+    // Server sends a window/logMessage diagnostic and then
+    // workspace/semanticTokens/refresh at startup — consume both.
+    let log = lsp_recv(&mut stdout);
+    assert_eq!(log["method"], "window/logMessage");
     let refresh = lsp_recv(&mut stdout);
     assert_eq!(refresh["method"], "workspace/semanticTokens/refresh");
 
@@ -127,6 +135,10 @@ fn semantic_tokens_full_round_trip() {
             "params": { "textDocument": { "uri": "file:///tmp/test.rs" } }
         }),
     );
+    // The first semantic token request emits a diagnostic logMessage before
+    // the response.
+    let tok_log = lsp_recv(&mut stdout);
+    assert_eq!(tok_log["method"], "window/logMessage");
     let resp = lsp_recv(&mut stdout);
     assert_eq!(resp["id"], 2, "semanticTokens/full response id mismatch");
 
@@ -181,7 +193,9 @@ fn unknown_method_returns_method_not_found() {
         &mut stdin,
         &serde_json::json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }),
     );
-    // Server sends workspace/semanticTokens/refresh at startup — consume it.
+    // Server sends a window/logMessage diagnostic and then
+    // workspace/semanticTokens/refresh at startup — consume both.
+    lsp_recv(&mut stdout);
     lsp_recv(&mut stdout);
 
     lsp_send(
