@@ -143,20 +143,22 @@ fn semantic_tokens_full_round_trip() {
     assert_eq!(resp["id"], 2, "semanticTokens/full response id mismatch");
 
     // Token data is a flat array: [delta_line, delta_start, length, token_type, modifiers, ...]
-    // Token 0: TODO  — line 0, col 3, len 4, type 0 (todoKeyword),  mods 0
-    // Token 1: FIXME — delta_line 1, col 3, len 5, type 1 (fixmeKeyword), mods 0
+    // All keywords share the standard `keyword` token type (index 0) and are
+    // distinguished by their modifier bit (todo = 1 << 0, fixme = 1 << 1).
+    // Token 0: TODO  — line 0, col 3, len 4, type 0, mods todo
+    // Token 1: FIXME — delta_line 1, col 3, len 5, type 0, mods fixme
     let data = resp["result"]["data"].as_array().expect("expected data array");
     assert_eq!(data.len(), 10, "expected 2 tokens × 5 fields");
     assert_eq!(data[0], 0, "TODO delta_line");
     assert_eq!(data[1], 3, "TODO delta_start");
     assert_eq!(data[2], 4, "TODO length");
-    assert_eq!(data[3], 0, "TODO token_type (todoKeyword)");
-    assert_eq!(data[4], 0, "TODO modifiers");
+    assert_eq!(data[3], 0, "TODO token_type (keyword)");
+    assert_eq!(data[4], 1, "TODO modifiers (todo bit)");
     assert_eq!(data[5], 1, "FIXME delta_line");
     assert_eq!(data[6], 3, "FIXME delta_start");
     assert_eq!(data[7], 5, "FIXME length");
-    assert_eq!(data[8], 1, "FIXME token_type (fixmeKeyword)");
-    assert_eq!(data[9], 0, "FIXME modifiers");
+    assert_eq!(data[8], 0, "FIXME token_type (keyword)");
+    assert_eq!(data[9], 2, "FIXME modifiers (fixme bit)");
 
     // ── shutdown / exit ──────────────────────────────────────────────────────
     lsp_send(
