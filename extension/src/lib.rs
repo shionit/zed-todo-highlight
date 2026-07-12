@@ -3,7 +3,7 @@ use zed_extension_api::{self as zed, Architecture, DownloadedFileType, LanguageS
 /// Version of the LSP binary to download from GitHub Releases.
 /// Must match the release tag (without the leading "v") when publishing.
 /// Update all four version fields together — see CLAUDE.md.
-const LSP_VERSION: &str = "0.2.2";
+const LSP_VERSION: &str = "0.3.0";
 
 struct TodoHighlightExtension {
     cached_binary_path: Option<String>,
