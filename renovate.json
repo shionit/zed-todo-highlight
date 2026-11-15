@@ -1,6 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "minimumReleaseAge": "3 days",
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": "3 days"
+  },
   "packageRules": [
     {
       "matchManagers": ["github-actions"],
@@ -12,10 +16,6 @@
       "matchUpdateTypes": ["minor"],
       "automerge": false,
       "dependencyDashboardApproval": true
-    },
-    {
-      "matchUpdateTypes": ["major"],
-      "matchPackageNames": ["*"]
     }
   ]
 }
