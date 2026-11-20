@@ -8,4 +8,4 @@ repository = "https://github.com/shionit/zed-todo-highlight"
 
 [language_servers.todo-highlight-lsp]
 name = "TODO Highlight LSP"
-languages = ["Rust", "Python", "JavaScript", "TypeScript", "Go", "C", "C++", "Java", "Ruby", "PHP", "Swift", "Kotlin", "Shell Script", "Markdown", "YAML", "TOML", "JSON", "CSS", "HTML", "Lua", "Zig", "Elixir", "Haskell", "Scala", "Dart", "R"]
+languages = ["Rust", "Python", "JavaScript", "TypeScript", "Go", "C", "C++", "Java", "Ruby", "PHP", "Swift", "Kotlin", "Shell Script", "Markdown", "YAML", "TOML", "JSON", "CSS", "HTML", "Lua", "Zig", "Elixir", "Haskell", "Scala", "Dart", "R", "ini", "Plain Text", "Jinja2"]
